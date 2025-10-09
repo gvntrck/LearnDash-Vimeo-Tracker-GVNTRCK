@@ -3,7 +3,7 @@
  * Plugin Name: LearnDash Vimeo Tracker GVNTRCK
  * Plugin URI: https://github.com/gvntrck/LearnDash-Vimeo-Tracker-GVNTRCK
  * Description: Rastreia o tempo de visualização de vídeos Vimeo em cursos LearnDash, salvando o progresso do aluno no banco de dados.
- * Version: 1.3.1
+ * Version: 1.4.0
  * Author: GVNTRCK
  * Author URI: https://github.com/gvntrck
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define constantes do plugin
-define( 'LDVT_VERSION', '1.3.0' );
+define( 'LDVT_VERSION', '1.4.0' );
 define( 'LDVT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LDVT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'LDVT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -231,9 +231,43 @@ function ldvt_add_admin_menu() {
 function ldvt_admin_page() {
     global $wpdb;
 
-    // Busca todos os registros do banco
-    $table   = $wpdb->prefix . 'tempo_video';
-    $results = $wpdb->get_results( "SELECT * FROM $table ORDER BY data_registro DESC" );
+    $table = $wpdb->prefix . 'tempo_video';
+    
+    // Paginação
+    $por_pagina = 50;
+    $pagina_atual = isset( $_GET['paged'] ) ? max( 1, intval( $_GET['paged'] ) ) : 1;
+    $offset = ( $pagina_atual - 1 ) * $por_pagina;
+    
+    // Filtro por email
+    $filtro_email = isset( $_GET['filtro_email'] ) ? sanitize_email( $_GET['filtro_email'] ) : '';
+    
+    // Monta a query com filtro
+    $where = '';
+    $params = array();
+    
+    if ( ! empty( $filtro_email ) ) {
+        $user = get_user_by( 'email', $filtro_email );
+        if ( $user ) {
+            $where = ' WHERE user_id = %d';
+            $params[] = $user->ID;
+        }
+    }
+    
+    // Conta total de registros
+    $total_registros = $wpdb->get_var( 
+        empty( $params ) 
+            ? "SELECT COUNT(*) FROM $table" 
+            : $wpdb->prepare( "SELECT COUNT(*) FROM $table" . $where, $params )
+    );
+    
+    $total_paginas = ceil( $total_registros / $por_pagina );
+    
+    // Busca registros com paginação
+    $query = "SELECT * FROM $table" . $where . " ORDER BY data_registro DESC LIMIT %d OFFSET %d";
+    $params[] = $por_pagina;
+    $params[] = $offset;
+    
+    $results = $wpdb->get_results( $wpdb->prepare( $query, $params ) );
 
     ?>
     <div class="wrap">
@@ -243,16 +277,48 @@ function ldvt_admin_page() {
         </h1>
         <p>Relatório de tempo assistido de vídeos Vimeo pelos alunos.</p>
 
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+        
+        <!-- Filtro por Email -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <form method="get" class="row g-3 align-items-end">
+                    <input type="hidden" name="page" value="learndash-vimeo-tracker">
+                    <div class="col-md-4">
+                        <label for="filtro_email" class="form-label fw-bold">Filtrar por Email:</label>
+                        <input type="email" 
+                               class="form-control" 
+                               id="filtro_email" 
+                               name="filtro_email" 
+                               value="<?php echo esc_attr( $filtro_email ); ?>" 
+                               placeholder="exemplo@email.com">
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <span class="dashicons dashicons-search" style="margin-top: 3px;"></span> Filtrar
+                        </button>
+                    </div>
+                    <?php if ( ! empty( $filtro_email ) ) : ?>
+                        <div class="col-md-2">
+                            <a href="?page=learndash-vimeo-tracker" class="btn btn-secondary w-100">
+                                <span class="dashicons dashicons-dismiss" style="margin-top: 3px;"></span> Limpar
+                            </a>
+                        </div>
+                    <?php endif; ?>
+                </form>
+            </div>
+        </div>
+
         <?php if ( empty( $results ) ) : ?>
-            <div class="notice notice-info">
-                <p>Nenhum registro encontrado. Os dados aparecerão aqui quando os alunos começarem a assistir os vídeos.</p>
+            <div class="alert alert-info">
+                <strong>Nenhum registro encontrado.</strong> 
+                <?php echo ! empty( $filtro_email ) ? 'Tente outro email ou limpe o filtro.' : 'Os dados aparecerão aqui quando os alunos começarem a assistir os vídeos.'; ?>
             </div>
         <?php else : ?>
-            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
-            
             <div class="mt-4">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">Total de Registros: <?php echo count( $results ); ?></h5>
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Total de Registros: <?php echo number_format( $total_registros, 0, ',', '.' ); ?></h5>
+                    <span class="badge bg-light text-dark">Página <?php echo $pagina_atual; ?> de <?php echo $total_paginas; ?></span>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -313,6 +379,54 @@ function ldvt_admin_page() {
                     </div>
                 </div>
             </div>
+
+            <!-- Paginação -->
+            <?php if ( $total_paginas > 1 ) : ?>
+                <div class="mt-4 d-flex justify-content-center">
+                    <nav aria-label="Navegação de página">
+                        <ul class="pagination pagination-lg">
+                            <?php if ( $pagina_atual > 1 ) : ?>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page=learndash-vimeo-tracker&paged=1<?php echo ! empty( $filtro_email ) ? '&filtro_email=' . urlencode( $filtro_email ) : ''; ?>">
+                                        &laquo; Primeira
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page=learndash-vimeo-tracker&paged=<?php echo $pagina_atual - 1; ?><?php echo ! empty( $filtro_email ) ? '&filtro_email=' . urlencode( $filtro_email ) : ''; ?>">
+                                        &lsaquo; Anterior
+                                    </a>
+                                </li>
+                            <?php endif; ?>
+
+                            <?php
+                            $inicio = max( 1, $pagina_atual - 2 );
+                            $fim = min( $total_paginas, $pagina_atual + 2 );
+                            
+                            for ( $i = $inicio; $i <= $fim; $i++ ) :
+                            ?>
+                                <li class="page-item <?php echo $i === $pagina_atual ? 'active' : ''; ?>">
+                                    <a class="page-link" href="?page=learndash-vimeo-tracker&paged=<?php echo $i; ?><?php echo ! empty( $filtro_email ) ? '&filtro_email=' . urlencode( $filtro_email ) : ''; ?>">
+                                        <?php echo $i; ?>
+                                    </a>
+                                </li>
+                            <?php endfor; ?>
+
+                            <?php if ( $pagina_atual < $total_paginas ) : ?>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page=learndash-vimeo-tracker&paged=<?php echo $pagina_atual + 1; ?><?php echo ! empty( $filtro_email ) ? '&filtro_email=' . urlencode( $filtro_email ) : ''; ?>">
+                                        Próxima &rsaquo;
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page=learndash-vimeo-tracker&paged=<?php echo $total_paginas; ?><?php echo ! empty( $filtro_email ) ? '&filtro_email=' . urlencode( $filtro_email ) : ''; ?>">
+                                        Última &raquo;
+                                    </a>
+                                </li>
+                            <?php endif; ?>
+                        </ul>
+                    </nav>
+                </div>
+            <?php endif; ?>
 
             <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.min.js"></script>
         <?php endif; ?>
