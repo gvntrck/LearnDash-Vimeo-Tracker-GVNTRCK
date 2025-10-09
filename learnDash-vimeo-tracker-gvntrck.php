@@ -3,7 +3,7 @@
  * Plugin Name: LearnDash Vimeo Tracker GVNTRCK
  * Plugin URI: https://github.com/gvntrck/LearnDash-Vimeo-Tracker-GVNTRCK
  * Description: Rastreia o tempo de visualização de vídeos Vimeo em cursos LearnDash, salvando o progresso do aluno no banco de dados.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: GVNTRCK
  * Author URI: https://github.com/gvntrck
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define constantes do plugin
-define( 'LDVT_VERSION', '1.0.0' );
+define( 'LDVT_VERSION', '1.1.0' );
 define( 'LDVT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LDVT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'LDVT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -204,6 +204,140 @@ function ldvt_criar_tabela_tempo_video() {
 
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
     dbDelta( $sql );
+}
+
+// === PÁGINA DE ADMINISTRAÇÃO ===
+
+add_action( 'admin_menu', 'ldvt_add_admin_menu' );
+
+/**
+ * Adiciona menu de administração do plugin
+ */
+function ldvt_add_admin_menu() {
+    add_menu_page(
+        'Vimeo Tracker',
+        'Vimeo Tracker',
+        'manage_options',
+        'learndash-vimeo-tracker',
+        'ldvt_admin_page',
+        'dashicons-video-alt3',
+        30
+    );
+}
+
+/**
+ * Renderiza a página de administração
+ */
+function ldvt_admin_page() {
+    global $wpdb;
+
+    // Busca todos os registros do banco
+    $table   = $wpdb->prefix . 'ldvt_tempo_video';
+    $results = $wpdb->get_results( "SELECT * FROM $table ORDER BY data_registro DESC" );
+
+    ?>
+    <div class="wrap">
+        <h1>
+            <span class="dashicons dashicons-video-alt3" style="font-size: 30px; margin-right: 10px;"></span>
+            LearnDash Vimeo Tracker
+        </h1>
+        <p>Relatório de tempo assistido de vídeos Vimeo pelos alunos.</p>
+
+        <?php if ( empty( $results ) ) : ?>
+            <div class="notice notice-info">
+                <p>Nenhum registro encontrado. Os dados aparecerão aqui quando os alunos começarem a assistir os vídeos.</p>
+            </div>
+        <?php else : ?>
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+            
+            <div class="card mt-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Total de Registros: <?php echo count( $results ); ?></h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Aluno</th>
+                                    <th>Email</th>
+                                    <th>Curso</th>
+                                    <th>Aula</th>
+                                    <th>Tempo Assistido</th>
+                                    <th>Duração Total</th>
+                                    <th>Progresso</th>
+                                    <th>Data Registro</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ( $results as $row ) : 
+                                    $user       = get_userdata( $row->user_id );
+                                    $curso_nome = $row->curso_id ? get_the_title( $row->curso_id ) : 'N/A';
+                                    $aula_nome  = $row->aula_id ? get_the_title( $row->aula_id ) : 'N/A';
+                                    $progresso  = $row->duracao_total > 0 ? round( ( $row->tempo / $row->duracao_total ) * 100, 1 ) : 0;
+                                    
+                                    // Formata tempo em horas:minutos:segundos
+                                    $tempo_formatado = gmdate( 'H:i:s', $row->tempo );
+                                    $duracao_formatada = gmdate( 'H:i:s', $row->duracao_total );
+                                ?>
+                                <tr>
+                                    <td>
+                                        <strong><?php echo esc_html( $user ? $user->display_name : 'Usuário #' . $row->user_id ); ?></strong>
+                                    </td>
+                                    <td><?php echo esc_html( $user ? $user->user_email : 'N/A' ); ?></td>
+                                    <td><?php echo esc_html( $curso_nome ); ?></td>
+                                    <td><?php echo esc_html( $aula_nome ); ?></td>
+                                    <td>
+                                        <span class="badge bg-info"><?php echo esc_html( $tempo_formatado ); ?></span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-secondary"><?php echo esc_html( $duracao_formatada ); ?></span>
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="height: 25px; min-width: 100px;">
+                                            <div class="progress-bar <?php echo $progresso >= 80 ? 'bg-success' : ( $progresso >= 50 ? 'bg-warning' : 'bg-danger' ); ?>" 
+                                                 role="progressbar" 
+                                                 style="width: <?php echo $progresso; ?>%;" 
+                                                 aria-valuenow="<?php echo $progresso; ?>" 
+                                                 aria-valuemin="0" 
+                                                 aria-valuemax="100">
+                                                <?php echo $progresso; ?>%
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td><?php echo esc_html( date_i18n( 'd/m/Y H:i', strtotime( $row->data_registro ) ) ); ?></td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.min.js"></script>
+        <?php endif; ?>
+    </div>
+
+    <style>
+        .wrap {
+            background: #fff;
+            padding: 20px;
+            margin: 20px 20px 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .table {
+            font-size: 14px;
+        }
+        .table th {
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .table td {
+            vertical-align: middle;
+        }
+    </style>
+    <?php
 }
 
 // === FUNÇÕES AUXILIARES ===
