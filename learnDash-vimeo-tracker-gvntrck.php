@@ -3,7 +3,7 @@
  * Plugin Name: LearnDash Vimeo Tracker GVNTRCK
  * Plugin URI: https://github.com/gvntrck/LearnDash-Vimeo-Tracker-GVNTRCK
  * Description: Rastreia o tempo de visualização de vídeos Vimeo em cursos LearnDash, salvando o progresso do aluno no banco de dados.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: GVNTRCK
  * Author URI: https://github.com/gvntrck
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define constantes do plugin
-define( 'LDVT_VERSION', '1.1.0' );
+define( 'LDVT_VERSION', '1.2.0' );
 define( 'LDVT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LDVT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'LDVT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -147,7 +147,7 @@ function ldvt_salvar_tempo_video_callback() {
 
     ldvt_criar_tabela_tempo_video();
 
-    $table = $wpdb->prefix . 'ldvt_tempo_video';
+    $table = $wpdb->prefix . 'tempo_video';
     $agora = current_time( 'mysql' ); // horário local configurado no WP — https://developer.wordpress.org/reference/functions/current_time/
 
     $wpdb->query(
@@ -181,7 +181,7 @@ function ldvt_salvar_tempo_video_callback() {
 function ldvt_criar_tabela_tempo_video() {
     global $wpdb;
 
-    $table           = $wpdb->prefix . 'ldvt_tempo_video';
+    $table           = $wpdb->prefix . 'tempo_video';
     $charset_collate = $wpdb->get_charset_collate();
 
     // Verifica se a tabela existe e se tem a coluna duracao_total
@@ -232,7 +232,7 @@ function ldvt_admin_page() {
     global $wpdb;
 
     // Busca todos os registros do banco
-    $table   = $wpdb->prefix . 'ldvt_tempo_video';
+    $table   = $wpdb->prefix . 'tempo_video';
     $results = $wpdb->get_results( "SELECT * FROM $table ORDER BY data_registro DESC" );
 
     ?>
