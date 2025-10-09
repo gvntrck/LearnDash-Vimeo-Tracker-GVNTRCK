@@ -3,7 +3,7 @@
  * Plugin Name: LearnDash Vimeo Tracker GVNTRCK
  * Plugin URI: https://github.com/gvntrck/LearnDash-Vimeo-Tracker-GVNTRCK
  * Description: Rastreia o tempo de visualização de vídeos Vimeo em cursos LearnDash, salvando o progresso do aluno no banco de dados.
- * Version: 1.3.0
+ * Version: 1.3.1
  * Author: GVNTRCK
  * Author URI: https://github.com/gvntrck
  * License: GPL v2 or later
@@ -250,7 +250,7 @@ function ldvt_admin_page() {
         <?php else : ?>
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
             
-            <div class="card mt-4">
+            <div class="mt-4">
                 <div class="card-header bg-primary text-white">
                     <h5 class="mb-0">Total de Registros: <?php echo count( $results ); ?></h5>
                 </div>
