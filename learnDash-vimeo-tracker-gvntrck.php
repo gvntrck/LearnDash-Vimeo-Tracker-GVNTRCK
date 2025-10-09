@@ -1,8 +1,58 @@
+<?php
+/**
+ * Plugin Name: LearnDash Vimeo Tracker GVNTRCK
+ * Plugin URI: https://github.com/gvntrck/LearnDash-Vimeo-Tracker-GVNTRCK
+ * Description: Rastreia o tempo de visualização de vídeos Vimeo em cursos LearnDash, salvando o progresso do aluno no banco de dados.
+ * Version: 1.0.0
+ * Author: GVNTRCK
+ * Author URI: https://github.com/gvntrck
+ * License: GPL v2 or later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
+ * Text Domain: learndash-vimeo-tracker-gvntrck
+ * Domain Path: /languages
+ * Requires at least: 5.8
+ * Requires PHP: 7.4
+ */
+
+// Previne acesso direto ao arquivo
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+// Define constantes do plugin
+define( 'LDVT_VERSION', '1.0.0' );
+define( 'LDVT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+define( 'LDVT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+define( 'LDVT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
+
+// === HOOKS DE ATIVAÇÃO E DESATIVAÇÃO ===
+
+register_activation_hook( __FILE__, 'ldvt_plugin_activate' );
+register_deactivation_hook( __FILE__, 'ldvt_plugin_deactivate' );
+
+/**
+ * Executa na ativação do plugin
+ */
+function ldvt_plugin_activate() {
+    ldvt_criar_tabela_tempo_video();
+    flush_rewrite_rules();
+}
+
+/**
+ * Executa na desativação do plugin
+ */
+function ldvt_plugin_deactivate() {
+    flush_rewrite_rules();
+}
+
 // === REGISTRO DO TEMPO DE VÍDEO ASSISTIDO VIMEO + LEARNDASH ===
 
-add_action( 'wp_footer', 'vimeo_tracking_script' );
+add_action( 'wp_footer', 'ldvt_vimeo_tracking_script' );
 
-function vimeo_tracking_script() {
+/**
+ * Injeta o script de rastreamento do Vimeo no footer
+ */
+function ldvt_vimeo_tracking_script() {
     if ( ! is_user_logged_in() ) {
         return;
     }
@@ -51,7 +101,7 @@ function vimeo_tracking_script() {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                         body: new URLSearchParams( {
-                            action:        'salvar_tempo_video',
+                            action:        'ldvt_salvar_tempo_video',
                             video_id:      iframe.src.split( '/video/' )[ 1 ].split( '?' )[ 0 ],
                             tempo,
                             curso_id:      CURSO_ID,
@@ -76,9 +126,12 @@ function vimeo_tracking_script() {
 
 // === CALLBACK AJAX PARA SALVAR TEMPO NO BANCO ===
 
-add_action( 'wp_ajax_salvar_tempo_video', 'salvar_tempo_video_callback' );
+add_action( 'wp_ajax_ldvt_salvar_tempo_video', 'ldvt_salvar_tempo_video_callback' );
 
-function salvar_tempo_video_callback() {
+/**
+ * Callback AJAX para salvar o tempo assistido no banco de dados
+ */
+function ldvt_salvar_tempo_video_callback() {
     global $wpdb;
 
     $user_id       = get_current_user_id();
@@ -92,9 +145,9 @@ function salvar_tempo_video_callback() {
         wp_send_json_error( 'Dados inválidos.' );
     }
 
-    criar_tabela_tempo_video();
+    ldvt_criar_tabela_tempo_video();
 
-    $table = $wpdb->prefix . 'tempo_video';
+    $table = $wpdb->prefix . 'ldvt_tempo_video';
     $agora = current_time( 'mysql' ); // horário local configurado no WP — https://developer.wordpress.org/reference/functions/current_time/
 
     $wpdb->query(
@@ -122,10 +175,13 @@ function salvar_tempo_video_callback() {
 
 // === CRIA TABELA SE NÃO EXISTIR ===
 
-function criar_tabela_tempo_video() {
+/**
+ * Cria a tabela de rastreamento de tempo de vídeo se não existir
+ */
+function ldvt_criar_tabela_tempo_video() {
     global $wpdb;
 
-    $table           = $wpdb->prefix . 'tempo_video';
+    $table           = $wpdb->prefix . 'ldvt_tempo_video';
     $charset_collate = $wpdb->get_charset_collate();
 
     // Verifica se a tabela existe e se tem a coluna duracao_total
@@ -148,4 +204,24 @@ function criar_tabela_tempo_video() {
 
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
     dbDelta( $sql );
+}
+
+// === FUNÇÕES AUXILIARES ===
+
+/**
+ * Retorna a versão do plugin
+ *
+ * @return string
+ */
+function ldvt_get_version() {
+    return LDVT_VERSION;
+}
+
+/**
+ * Verifica se o LearnDash está ativo
+ *
+ * @return bool
+ */
+function ldvt_is_learndash_active() {
+    return function_exists( 'learndash_get_course_id' );
 }
