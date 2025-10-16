@@ -1,5 +1,61 @@
 # Changelog - LearnDash Vimeo Tracker GVNTRCK
 
+## [1.6.0] - 2025-10-16
+
+### ✨ Nova Funcionalidade: Relatório de Progresso por Curso
+
+**Dashboard Completo de Acompanhamento do Aluno**
+
+Agora você pode visualizar o progresso detalhado de cada aluno em um curso específico!
+
+#### Recursos:
+
+1. **Filtros Inteligentes**
+   - Busca por email do aluno
+   - Seleção de curso LearnDash
+   - Interface limpa e intuitiva
+
+2. **Visualização por Cards**
+   - Card individual para cada lição do curso
+   - Status visual: Completo (≥80%), Em Andamento, Não Iniciado
+   - Barra de progresso com cores dinâmicas
+   - Tempo assistido vs duração total
+   - Data da última visualização
+
+3. **Resumo Geral Estatístico**
+   - Total de lições no curso
+   - Lições completas (≥80%)
+   - Lições em andamento
+   - Lições não iniciadas
+   - Progresso médio das lições com vídeo
+   - Taxa de conclusão do curso
+   - Alertas contextuais de desempenho
+
+4. **Indicadores Visuais**
+   - 🟢 Verde: Completo (≥80%)
+   - 🟡 Amarelo: Em Andamento (<80%)
+   - ⚪ Cinza: Não Iniciado
+   - Cards com hover effect
+   - Ícones do Dashicons
+
+#### Como Usar:
+
+1. Acesse **Vimeo Tracker → Progresso por Curso**
+2. Digite o email do aluno
+3. Selecione o curso desejado
+4. Clique em "Buscar"
+5. Visualize o relatório completo!
+
+#### Benefícios:
+
+- ✅ Acompanhamento individual do aluno
+- ✅ Identificação rápida de lições não assistidas
+- ✅ Métricas de engajamento por curso
+- ✅ Suporte à tomada de decisão pedagógica
+- ✅ Interface responsiva e moderna
+
+---
+
 ## [1.5.0] - 2025-10-16
 
 ### ✨ Novidades

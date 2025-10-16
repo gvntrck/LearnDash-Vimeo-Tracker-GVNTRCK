@@ -3,7 +3,7 @@
  * Plugin Name: LearnDash Vimeo Tracker GVNTRCK
  * Plugin URI: https://github.com/gvntrck/LearnDash-Vimeo-Tracker-GVNTRCK
  * Description: Rastreia o tempo de visualização de vídeos Vimeo em cursos LearnDash, salvando o progresso do aluno no banco de dados.
- * Version: 1.5.0
+ * Version: 1.6.0
  * Author: GVNTRCK
  * Author URI: https://github.com/gvntrck
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define constantes do plugin
-define( 'LDVT_VERSION', '1.5.0' );
+define( 'LDVT_VERSION', '1.6.0' );
 define( 'LDVT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LDVT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'LDVT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -278,6 +278,26 @@ function ldvt_add_admin_menu() {
         'dashicons-video-alt3',
         30
     );
+    
+    // Submenu: Relatório Geral (página principal)
+    add_submenu_page(
+        'learndash-vimeo-tracker',
+        'Relatório Geral',
+        'Relatório Geral',
+        'manage_options',
+        'learndash-vimeo-tracker',
+        'ldvt_admin_page'
+    );
+    
+    // Submenu: Progresso por Curso
+    add_submenu_page(
+        'learndash-vimeo-tracker',
+        'Progresso por Curso',
+        'Progresso por Curso',
+        'manage_options',
+        'learndash-vimeo-tracker-curso',
+        'ldvt_admin_page_progresso_curso'
+    );
 }
 
 /**
@@ -511,6 +531,380 @@ function ldvt_admin_page() {
             vertical-align: middle;
         }
     </style>
+    <?php
+}
+
+/**
+ * Renderiza a página de Progresso por Curso
+ */
+function ldvt_admin_page_progresso_curso() {
+    global $wpdb;
+    
+    if ( ! function_exists( 'learndash_get_course_id' ) ) {
+        ?>
+        <div class="wrap">
+            <h1>Progresso por Curso</h1>
+            <div class="alert alert-warning">
+                <strong>LearnDash não detectado!</strong> Este recurso requer o plugin LearnDash ativo.
+            </div>
+        </div>
+        <?php
+        return;
+    }
+    
+    $table = $wpdb->prefix . 'tempo_video';
+    
+    // Filtros
+    $filtro_email = isset( $_GET['filtro_email'] ) ? sanitize_email( $_GET['filtro_email'] ) : '';
+    $filtro_curso = isset( $_GET['filtro_curso'] ) ? intval( $_GET['filtro_curso'] ) : 0;
+    
+    // Busca usuário pelo email
+    $user = null;
+    if ( ! empty( $filtro_email ) ) {
+        $user = get_user_by( 'email', $filtro_email );
+    }
+    
+    // Busca todos os cursos LearnDash
+    $cursos = get_posts( array(
+        'post_type'      => 'sfwd-courses',
+        'posts_per_page' => -1,
+        'orderby'        => 'title',
+        'order'          => 'ASC',
+    ) );
+    
+    ?>
+    <div class="wrap">
+        <h1>
+            <span class="dashicons dashicons-chart-bar" style="font-size: 30px; margin-right: 10px;"></span>
+            Progresso por Curso
+        </h1>
+        <p>Visualize o progresso detalhado de vídeos por aluno e curso.</p>
+        
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+        
+        <!-- Filtros -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <form method="get" class="row g-3 align-items-end">
+                    <input type="hidden" name="page" value="learndash-vimeo-tracker-curso">
+                    
+                    <div class="col-md-4">
+                        <label for="filtro_email" class="form-label fw-bold">Email do Aluno:</label>
+                        <input type="email" 
+                               class="form-control" 
+                               id="filtro_email" 
+                               name="filtro_email" 
+                               value="<?php echo esc_attr( $filtro_email ); ?>" 
+                               placeholder="exemplo@email.com"
+                               required>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <label for="filtro_curso" class="form-label fw-bold">Curso:</label>
+                        <select class="form-select" id="filtro_curso" name="filtro_curso" required>
+                            <option value="">Selecione um curso</option>
+                            <?php foreach ( $cursos as $curso ) : ?>
+                                <option value="<?php echo $curso->ID; ?>" <?php selected( $filtro_curso, $curso->ID ); ?>>
+                                    <?php echo esc_html( $curso->post_title ); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <span class="dashicons dashicons-search" style="margin-top: 3px;"></span> Buscar
+                        </button>
+                    </div>
+                    
+                    <?php if ( ! empty( $filtro_email ) || ! empty( $filtro_curso ) ) : ?>
+                        <div class="col-md-2">
+                            <a href="?page=learndash-vimeo-tracker-curso" class="btn btn-secondary w-100">
+                                <span class="dashicons dashicons-dismiss" style="margin-top: 3px;"></span> Limpar
+                            </a>
+                        </div>
+                    <?php endif; ?>
+                </form>
+            </div>
+        </div>
+        
+        <?php
+        // Se tiver filtros aplicados, mostra o relatório
+        if ( $user && $filtro_curso ) {
+            ldvt_exibir_relatorio_progresso( $user, $filtro_curso, $table );
+        } elseif ( ! empty( $filtro_email ) || ! empty( $filtro_curso ) ) {
+            ?>
+            <div class="alert alert-info">
+                <strong>Atenção!</strong> Por favor, preencha ambos os filtros (Email e Curso) para visualizar o relatório.
+            </div>
+            <?php
+        }
+        ?>
+        
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.min.js"></script>
+    </div>
+    
+    <style>
+        #wpbody-content .wrap {
+            max-width: 100% !important;
+            width: 100% !important;
+            background: #fff;
+            padding: 20px;
+            margin: 20px 20px 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .progress-card {
+            transition: transform 0.2s;
+        }
+        .progress-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        .status-badge {
+            font-size: 0.85rem;
+            padding: 0.35rem 0.65rem;
+        }
+    </style>
+    <?php
+}
+
+/**
+ * Exibe o relatório de progresso detalhado
+ */
+function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
+    global $wpdb;
+    
+    $curso = get_post( $curso_id );
+    if ( ! $curso ) {
+        echo '<div class="alert alert-danger">Curso não encontrado.</div>';
+        return;
+    }
+    
+    // Busca todas as lições do curso
+    $lessons = learndash_get_lesson_list( $curso_id );
+    
+    if ( empty( $lessons ) ) {
+        echo '<div class="alert alert-warning">Este curso não possui lições cadastradas.</div>';
+        return;
+    }
+    
+    // Busca todos os registros de vídeo do usuário neste curso
+    $registros = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM $table WHERE user_id = %d AND curso_id = %d",
+        $user->ID,
+        $curso_id
+    ), OBJECT_K );
+    
+    // Calcula estatísticas
+    $total_aulas = count( $lessons );
+    $aulas_com_video = 0;
+    $aulas_completas = 0;
+    $aulas_em_andamento = 0;
+    $aulas_nao_iniciadas = 0;
+    $progresso_total = 0;
+    
+    ?>
+    <!-- Cabeçalho do Relatório -->
+    <div class="card mb-4 border-primary">
+        <div class="card-header bg-primary text-white">
+            <h4 class="mb-0">
+                <span class="dashicons dashicons-admin-users" style="font-size: 24px; vertical-align: middle;"></span>
+                <?php echo esc_html( $user->display_name ); ?> - <?php echo esc_html( $user->user_email ); ?>
+            </h4>
+        </div>
+        <div class="card-body">
+            <h5 class="card-title">
+                <span class="dashicons dashicons-book" style="vertical-align: middle;"></span>
+                <?php echo esc_html( $curso->post_title ); ?>
+            </h5>
+            <p class="text-muted mb-0">Total de Lições: <?php echo $total_aulas; ?></p>
+        </div>
+    </div>
+    
+    <!-- Cards de Progresso das Aulas -->
+    <div class="row g-3">
+        <?php foreach ( $lessons as $lesson ) :
+            $lesson_id = $lesson->ID;
+            $lesson_title = $lesson->post_title;
+            
+            // Verifica se tem registro de vídeo para esta aula
+            $registro = null;
+            foreach ( $registros as $reg ) {
+                if ( $reg->aula_id == $lesson_id ) {
+                    $registro = $reg;
+                    break;
+                }
+            }
+            
+            if ( $registro ) {
+                $aulas_com_video++;
+                $progresso = $registro->duracao_total > 0 ? round( ( $registro->tempo / $registro->duracao_total ) * 100, 1 ) : 0;
+                $progresso_total += $progresso;
+                
+                if ( $progresso >= 80 ) {
+                    $aulas_completas++;
+                    $status = 'Completo';
+                    $badge_class = 'bg-success';
+                    $icon = 'yes-alt';
+                } else {
+                    $aulas_em_andamento++;
+                    $status = 'Em Andamento';
+                    $badge_class = 'bg-warning';
+                    $icon = 'update';
+                }
+                
+                $tempo_formatado = gmdate( 'H:i:s', $registro->tempo );
+                $duracao_formatada = gmdate( 'H:i:s', $registro->duracao_total );
+            } else {
+                $aulas_nao_iniciadas++;
+                $progresso = 0;
+                $status = 'Não Iniciado';
+                $badge_class = 'bg-secondary';
+                $icon = 'minus';
+                $tempo_formatado = '00:00:00';
+                $duracao_formatada = 'N/A';
+            }
+        ?>
+        <div class="col-md-6 col-lg-4">
+            <div class="card progress-card h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="card-title mb-0"><?php echo esc_html( $lesson_title ); ?></h6>
+                        <span class="badge status-badge <?php echo $badge_class; ?>">
+                            <span class="dashicons dashicons-<?php echo $icon; ?>" style="font-size: 12px; vertical-align: middle;"></span>
+                            <?php echo $status; ?>
+                        </span>
+                    </div>
+                    
+                    <?php if ( $registro ) : ?>
+                        <div class="mb-2">
+                            <small class="text-muted">
+                                <strong>Assistido:</strong> <?php echo $tempo_formatado; ?> / <?php echo $duracao_formatada; ?>
+                            </small>
+                        </div>
+                        
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar <?php echo $progresso >= 80 ? 'bg-success' : ( $progresso >= 50 ? 'bg-warning' : 'bg-danger' ); ?>" 
+                                 role="progressbar" 
+                                 style="width: <?php echo $progresso; ?>%;" 
+                                 aria-valuenow="<?php echo $progresso; ?>" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100">
+                                <?php echo $progresso; ?>%
+                            </div>
+                        </div>
+                        
+                        <small class="text-muted d-block mt-2">
+                            <span class="dashicons dashicons-clock" style="font-size: 14px; vertical-align: middle;"></span>
+                            <?php echo esc_html( date_i18n( 'd/m/Y H:i', strtotime( $registro->data_registro ) ) ); ?>
+                        </small>
+                    <?php else : ?>
+                        <div class="alert alert-light mb-0 mt-2">
+                            <small>Nenhum vídeo assistido nesta lição.</small>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+        <?php endforeach; ?>
+    </div>
+    
+    <!-- Resumo Geral -->
+    <div class="card mt-4 border-info">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">
+                <span class="dashicons dashicons-chart-pie" style="font-size: 20px; vertical-align: middle;"></span>
+                Resumo Geral do Progresso
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row text-center">
+                <div class="col-md-3">
+                    <div class="p-3 bg-light rounded">
+                        <h2 class="text-primary mb-0"><?php echo $total_aulas; ?></h2>
+                        <small class="text-muted">Total de Lições</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="p-3 bg-success bg-opacity-10 rounded">
+                        <h2 class="text-success mb-0"><?php echo $aulas_completas; ?></h2>
+                        <small class="text-muted">Completas (≥80%)</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="p-3 bg-warning bg-opacity-10 rounded">
+                        <h2 class="text-warning mb-0"><?php echo $aulas_em_andamento; ?></h2>
+                        <small class="text-muted">Em Andamento</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="p-3 bg-secondary bg-opacity-10 rounded">
+                        <h2 class="text-secondary mb-0"><?php echo $aulas_nao_iniciadas; ?></h2>
+                        <small class="text-muted">Não Iniciadas</small>
+                    </div>
+                </div>
+            </div>
+            
+            <hr class="my-4">
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>Progresso Médio das Lições com Vídeo:</h6>
+                    <?php 
+                    $progresso_medio = $aulas_com_video > 0 ? round( $progresso_total / $aulas_com_video, 1 ) : 0;
+                    ?>
+                    <div class="progress" style="height: 30px;">
+                        <div class="progress-bar <?php echo $progresso_medio >= 80 ? 'bg-success' : ( $progresso_medio >= 50 ? 'bg-warning' : 'bg-danger' ); ?>" 
+                             role="progressbar" 
+                             style="width: <?php echo $progresso_medio; ?>%;" 
+                             aria-valuenow="<?php echo $progresso_medio; ?>" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100">
+                            <strong><?php echo $progresso_medio; ?>%</strong>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <h6>Taxa de Conclusão do Curso:</h6>
+                    <?php 
+                    $taxa_conclusao = $total_aulas > 0 ? round( ( $aulas_completas / $total_aulas ) * 100, 1 ) : 0;
+                    ?>
+                    <div class="progress" style="height: 30px;">
+                        <div class="progress-bar <?php echo $taxa_conclusao >= 80 ? 'bg-success' : ( $taxa_conclusao >= 50 ? 'bg-info' : 'bg-danger' ); ?>" 
+                             role="progressbar" 
+                             style="width: <?php echo $taxa_conclusao; ?>%;" 
+                             aria-valuenow="<?php echo $taxa_conclusao; ?>" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100">
+                            <strong><?php echo $taxa_conclusao; ?>%</strong>
+                        </div>
+                    </div>
+                    <small class="text-muted">
+                        <?php echo $aulas_completas; ?> de <?php echo $total_aulas; ?> lições completas
+                    </small>
+                </div>
+            </div>
+            
+            <?php if ( $taxa_conclusao >= 80 ) : ?>
+                <div class="alert alert-success mt-3 mb-0">
+                    <strong><span class="dashicons dashicons-yes-alt"></span> Parabéns!</strong> 
+                    O aluno está com excelente progresso no curso!
+                </div>
+            <?php elseif ( $taxa_conclusao >= 50 ) : ?>
+                <div class="alert alert-info mt-3 mb-0">
+                    <strong><span class="dashicons dashicons-info"></span> Bom progresso!</strong> 
+                    O aluno está avançando no curso.
+                </div>
+            <?php else : ?>
+                <div class="alert alert-warning mt-3 mb-0">
+                    <strong><span class="dashicons dashicons-warning"></span> Atenção!</strong> 
+                    O aluno precisa de mais dedicação para concluir o curso.
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
     <?php
 }
 
