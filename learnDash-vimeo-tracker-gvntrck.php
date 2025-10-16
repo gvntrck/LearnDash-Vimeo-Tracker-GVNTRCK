@@ -3,7 +3,7 @@
  * Plugin Name: LearnDash Vimeo Tracker GVNTRCK
  * Plugin URI: https://github.com/gvntrck/LearnDash-Vimeo-Tracker-GVNTRCK
  * Description: Rastreia o tempo de visualização de vídeos Vimeo em cursos LearnDash, salvando o progresso do aluno no banco de dados.
- * Version: 1.6.3
+ * Version: 1.7.0
  * Author: GVNTRCK
  * Author URI: https://github.com/gvntrck
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define constantes do plugin
-define( 'LDVT_VERSION', '1.6.3' );
+define( 'LDVT_VERSION', '1.7.0' );
 define( 'LDVT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LDVT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'LDVT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -666,16 +666,18 @@ function ldvt_admin_page_progresso_curso() {
             border-radius: 8px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
-        .progress-card {
-            transition: transform 0.2s;
+        #wpbody-content {
+            padding-right: 20px;
         }
-        .progress-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        .table {
+            font-size: 14px;
         }
-        .status-badge {
-            font-size: 0.85rem;
-            padding: 0.35rem 0.65rem;
+        .table th {
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .table td {
+            vertical-align: middle;
         }
     </style>
     <?php
@@ -740,92 +742,101 @@ function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
         </div>
     </div>
     
-    <!-- Cards de Progresso das Aulas -->
-    <div class="row g-3">
-        <?php foreach ( $lessons as $lesson ) :
-            $lesson_id = $lesson->ID;
-            $lesson_title = $lesson->post_title;
-            
-            // Verifica se tem registro de vídeo para esta aula
-            $registro = null;
-            foreach ( $registros as $reg ) {
-                if ( $reg->aula_id == $lesson_id ) {
-                    $registro = $reg;
-                    break;
-                }
-            }
-            
-            if ( $registro ) {
-                $aulas_com_video++;
-                $progresso = $registro->duracao_total > 0 ? round( ( $registro->tempo / $registro->duracao_total ) * 100, 1 ) : 0;
-                $progresso_total += $progresso;
-                
-                if ( $progresso >= 80 ) {
-                    $aulas_completas++;
-                    $status = 'Completo';
-                    $badge_class = 'bg-success';
-                    $icon = 'yes-alt';
-                } else {
-                    $aulas_em_andamento++;
-                    $status = 'Em Andamento';
-                    $badge_class = 'bg-warning';
-                    $icon = 'update';
-                }
-                
-                $tempo_formatado = gmdate( 'H:i:s', $registro->tempo );
-                $duracao_formatada = gmdate( 'H:i:s', $registro->duracao_total );
-            } else {
-                $aulas_nao_iniciadas++;
-                $progresso = 0;
-                $status = 'Não Iniciado';
-                $badge_class = 'bg-secondary';
-                $icon = 'minus';
-                $tempo_formatado = '00:00:00';
-                $duracao_formatada = 'N/A';
-            }
-        ?>
-        <div class="col-md-6 col-lg-4">
-            <div class="card progress-card h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <h6 class="card-title mb-0"><?php echo esc_html( $lesson_title ); ?></h6>
-                        <span class="badge status-badge <?php echo $badge_class; ?>">
-                            <span class="dashicons dashicons-<?php echo $icon; ?>" style="font-size: 12px; vertical-align: middle;"></span>
-                            <?php echo $status; ?>
-                        </span>
-                    </div>
-                    
-                    <?php if ( $registro ) : ?>
-                        <div class="mb-2">
-                            <small class="text-muted">
-                                <strong>Assistido:</strong> <?php echo $tempo_formatado; ?> / <?php echo $duracao_formatada; ?>
-                            </small>
-                        </div>
-                        
-                        <div class="progress" style="height: 20px;">
-                            <div class="progress-bar <?php echo $progresso >= 80 ? 'bg-success' : ( $progresso >= 50 ? 'bg-warning' : 'bg-danger' ); ?>" 
-                                 role="progressbar" 
-                                 style="width: <?php echo $progresso; ?>%;" 
-                                 aria-valuenow="<?php echo $progresso; ?>" 
-                                 aria-valuemin="0" 
-                                 aria-valuemax="100">
-                                <?php echo $progresso; ?>%
-                            </div>
-                        </div>
-                        
-                        <small class="text-muted d-block mt-2">
-                            <span class="dashicons dashicons-clock" style="font-size: 14px; vertical-align: middle;"></span>
-                            <?php echo esc_html( date_i18n( 'd/m/Y H:i', strtotime( $registro->data_registro ) ) ); ?>
-                        </small>
-                    <?php else : ?>
-                        <div class="alert alert-light mb-0 mt-2">
-                            <small>Nenhum vídeo assistido nesta aula.</small>
-                        </div>
-                    <?php endif; ?>
-                </div>
+    <!-- Tabela de Progresso das Aulas -->
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Aula</th>
+                            <th>Status</th>
+                            <th>Tempo Assistido</th>
+                            <th>Duração Total</th>
+                            <th>Progresso</th>
+                            <th>Última Visualização</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $lessons as $lesson ) :
+                            $lesson_id = $lesson->ID;
+                            $lesson_title = $lesson->post_title;
+                            
+                            // Verifica se tem registro de vídeo para esta aula
+                            $registro = null;
+                            foreach ( $registros as $reg ) {
+                                if ( $reg->aula_id == $lesson_id ) {
+                                    $registro = $reg;
+                                    break;
+                                }
+                            }
+                            
+                            if ( $registro ) {
+                                $aulas_com_video++;
+                                $progresso = $registro->duracao_total > 0 ? round( ( $registro->tempo / $registro->duracao_total ) * 100, 1 ) : 0;
+                                $progresso_total += $progresso;
+                                
+                                if ( $progresso >= 80 ) {
+                                    $aulas_completas++;
+                                    $status = 'Completo';
+                                    $badge_class = 'bg-success';
+                                    $icon = 'yes-alt';
+                                } else {
+                                    $aulas_em_andamento++;
+                                    $status = 'Em Andamento';
+                                    $badge_class = 'bg-warning';
+                                    $icon = 'update';
+                                }
+                                
+                                $tempo_formatado = gmdate( 'H:i:s', $registro->tempo );
+                                $duracao_formatada = gmdate( 'H:i:s', $registro->duracao_total );
+                                $data_formatada = date_i18n( 'd/m/Y H:i', strtotime( $registro->data_registro ) );
+                            } else {
+                                $aulas_nao_iniciadas++;
+                                $progresso = 0;
+                                $status = 'Não Iniciado';
+                                $badge_class = 'bg-secondary';
+                                $icon = 'minus';
+                                $tempo_formatado = '00:00:00';
+                                $duracao_formatada = 'N/A';
+                                $data_formatada = '-';
+                            }
+                        ?>
+                        <tr>
+                            <td>
+                                <strong><?php echo esc_html( $lesson_title ); ?></strong>
+                            </td>
+                            <td>
+                                <span class="badge <?php echo $badge_class; ?>">
+                                    <span class="dashicons dashicons-<?php echo $icon; ?>" style="font-size: 12px; vertical-align: middle;"></span>
+                                    <?php echo $status; ?>
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge bg-info"><?php echo $tempo_formatado; ?></span>
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary"><?php echo $duracao_formatada; ?></span>
+                            </td>
+                            <td>
+                                <div class="progress" style="height: 25px; min-width: 100px;">
+                                    <div class="progress-bar <?php echo $progresso >= 80 ? 'bg-success' : ( $progresso >= 50 ? 'bg-warning' : 'bg-danger' ); ?>" 
+                                         role="progressbar" 
+                                         style="width: <?php echo $progresso; ?>%;" 
+                                         aria-valuenow="<?php echo $progresso; ?>" 
+                                         aria-valuemin="0" 
+                                         aria-valuemax="100">
+                                        <?php echo $progresso; ?>%
+                                    </div>
+                                </div>
+                            </td>
+                            <td><?php echo esc_html( $data_formatada ); ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
             </div>
         </div>
-        <?php endforeach; ?>
     </div>
     
     <!-- Resumo Geral -->

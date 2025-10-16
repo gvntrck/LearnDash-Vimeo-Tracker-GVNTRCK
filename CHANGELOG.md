@@ -1,5 +1,45 @@
 # Changelog - LearnDash Vimeo Tracker GVNTRCK
 
+## [1.7.0] - 2025-10-16
+
+### 🎨 Mudança de Visualização
+
+**Formato de Tabela no Relatório de Progresso por Curso**
+
+A visualização do relatório "Progresso por Curso" foi alterada de **cards** para **tabela**, seguindo o mesmo padrão do "Relatório Geral".
+
+#### O que mudou:
+
+**Antes:**
+- Visualização em cards (3 colunas)
+- Informações distribuídas em cards individuais
+- Hover effects e animações
+
+**Agora:**
+- Visualização em tabela responsiva
+- Todas as aulas em uma única tabela
+- Mesma estrutura do Relatório Geral
+- Mais fácil de escanear e comparar dados
+
+#### Colunas da Tabela:
+
+1. **Aula** - Nome da aula
+2. **Status** - Badge colorido (Completo/Em Andamento/Não Iniciado)
+3. **Tempo Assistido** - Formato HH:MM:SS
+4. **Duração Total** - Formato HH:MM:SS ou N/A
+5. **Progresso** - Barra visual com percentual
+6. **Última Visualização** - Data e hora ou "-"
+
+#### Benefícios:
+
+- ✅ Visualização mais compacta
+- ✅ Facilita comparação entre aulas
+- ✅ Consistência visual com Relatório Geral
+- ✅ Melhor para cursos com muitas aulas
+- ✅ Mais fácil de exportar/imprimir
+
+---
+
 ## [1.6.3] - 2025-10-16
 
 ### 🔍 Melhorias de Diagnóstico
