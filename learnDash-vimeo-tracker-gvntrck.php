@@ -3,7 +3,7 @@
  * Plugin Name: LearnDash Vimeo Tracker GVNTRCK
  * Plugin URI: https://github.com/gvntrck/LearnDash-Vimeo-Tracker-GVNTRCK
  * Description: Rastreia o tempo de visualização de vídeos Vimeo em cursos LearnDash, salvando o progresso do aluno no banco de dados.
- * Version: 1.4.1
+ * Version: 1.5.0
  * Author: GVNTRCK
  * Author URI: https://github.com/gvntrck
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define constantes do plugin
-define( 'LDVT_VERSION', '1.4.1' );
+define( 'LDVT_VERSION', '1.5.0' );
 define( 'LDVT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LDVT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'LDVT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -71,12 +71,15 @@ function ldvt_vimeo_tracking_script() {
             const iframe = document.querySelector( 'iframe[src*="vimeo.com/video"]' );
             if ( ! iframe ) return;
 
-            const player       = new Vimeo.Player( iframe );
-            let   totalWatched = 0;
-            let   lastTime     = 0;
-            let   lastSent     = 0;
-            let   sending      = false;
-            let   videoDuration = 0;
+            const player = new Vimeo.Player( iframe );
+            
+            // Rastreamento de intervalos assistidos
+            let watchedIntervals = []; // Array de {start, end} representando intervalos assistidos
+            let lastTime = 0;
+            let currentPlaybackRate = 1.0;
+            let lastSent = 0;
+            let sending = false;
+            let videoDuration = 0;
 
             // Captura a duração total do vídeo
             player.getDuration().then( duration => {
@@ -85,16 +88,68 @@ function ldvt_vimeo_tracking_script() {
                 console.error( 'Erro ao obter duração do vídeo:', error );
             } );
 
+            // Captura a velocidade de reprodução inicial
+            player.getPlaybackRate().then( rate => {
+                currentPlaybackRate = rate;
+            } ).catch( error => {
+                console.error( 'Erro ao obter velocidade de reprodução:', error );
+            } );
+
+            // Atualiza quando a velocidade muda
+            player.on( 'playbackratechange', ( data ) => {
+                currentPlaybackRate = data.playbackRate;
+            } );
+
+            // Função para adicionar intervalo assistido
+            const addWatchedInterval = ( start, end ) => {
+                if ( start >= end ) return;
+                
+                // Adiciona o novo intervalo
+                watchedIntervals.push( { start, end } );
+                
+                // Mescla intervalos sobrepostos
+                watchedIntervals.sort( ( a, b ) => a.start - b.start );
+                
+                const merged = [];
+                let current = watchedIntervals[ 0 ];
+                
+                for ( let i = 1; i < watchedIntervals.length; i++ ) {
+                    const next = watchedIntervals[ i ];
+                    
+                    if ( current.end >= next.start ) {
+                        // Intervalos se sobrepõem, mescla
+                        current.end = Math.max( current.end, next.end );
+                    } else {
+                        // Não se sobrepõem, adiciona o atual e move para o próximo
+                        merged.push( current );
+                        current = next;
+                    }
+                }
+                merged.push( current );
+                watchedIntervals = merged;
+            };
+
+            // Calcula o tempo total assistido (soma de todos os intervalos)
+            const getTotalWatchedTime = () => {
+                return watchedIntervals.reduce( ( total, interval ) => {
+                    return total + ( interval.end - interval.start );
+                }, 0 );
+            };
+
+            // Rastreia o progresso do vídeo
             player.on( 'timeupdate', ( { seconds } ) => {
-                if ( seconds > lastTime ) {
-                    totalWatched += seconds - lastTime;
+                // Só conta se o vídeo está avançando (não retrocedendo)
+                if ( seconds > lastTime && seconds - lastTime < 2 ) {
+                    // Adiciona o intervalo assistido
+                    addWatchedInterval( lastTime, seconds );
                 }
                 lastTime = seconds;
             } );
 
             const sendTime = () => {
-                const tempo = Math.round( totalWatched );
-                if ( tempo > lastSent && ! sending ) {
+                const tempoReal = Math.round( getTotalWatchedTime() );
+                
+                if ( tempoReal > lastSent && ! sending ) {
                     sending = true;
 
                     fetch( AJAX_URL, {
@@ -103,19 +158,19 @@ function ldvt_vimeo_tracking_script() {
                         body: new URLSearchParams( {
                             action:        'ldvt_salvar_tempo_video',
                             video_id:      iframe.src.split( '/video/' )[ 1 ].split( '?' )[ 0 ],
-                            tempo,
+                            tempo:         tempoReal,
                             curso_id:      CURSO_ID,
                             aula_id:       AULA_ID,
                             duracao_total: videoDuration,
                         } ),
                     } ).finally( () => {
-                        lastSent = tempo;
+                        lastSent = tempoReal;
                         sending  = false;
                     } );
                 }
             };
 
-            setInterval( sendTime, 180000 ); // 3 min
+            setInterval( sendTime, 180000 ); // 3 min
             player.on( 'ended', sendTime );
             window.addEventListener( 'beforeunload', sendTime );
         } );
