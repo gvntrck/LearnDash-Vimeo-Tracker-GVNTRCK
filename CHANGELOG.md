@@ -1,5 +1,26 @@
 # Changelog - LearnDash Vimeo Tracker GVNTRCK
 
+## [1.7.1] - 2025-10-16
+
+### 🐛 Correção de Layout
+
+**Cards com Largura Total**
+
+Corrigido problema onde os elementos `.card` ficavam estreitos no lado esquerdo da tela.
+
+#### O que foi corrigido:
+
+- Adicionado CSS para forçar cards a ocuparem 100% da largura disponível
+- `.card { width: 100% !important; max-width: 100% !important; }`
+
+#### Resultado:
+
+- ✅ Cards agora ocupam toda a largura da tela
+- ✅ Melhor aproveitamento do espaço
+- ✅ Visualização mais limpa e profissional
+
+---
+
 ## [1.7.0] - 2025-10-16
 
 ### 🎨 Mudança de Visualização
