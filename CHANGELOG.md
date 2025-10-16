@@ -1,5 +1,63 @@
 # Changelog - LearnDash Vimeo Tracker GVNTRCK
 
+## [1.6.3] - 2025-10-16
+
+### 🔍 Melhorias de Diagnóstico
+
+**Mensagens Informativas e Debug Aprimorado**
+
+#### Novidades:
+
+1. **Validação de Email Aprimorada**
+   - Agora mostra mensagem clara quando o email não é encontrado
+   - Indica se o usuário não está cadastrado no WordPress
+
+2. **Detecção de Registros em Outros Cursos**
+   - Se o aluno não tiver registros no curso selecionado, mas tiver em outros cursos, uma mensagem informativa é exibida
+   - Mostra quantos registros existem em outros cursos
+   - Sugere verificar o "Relatório Geral"
+
+3. **Mensagens de Diagnóstico**
+   - Indica possíveis causas quando não há registros:
+     - Aluno assistiu vídeos em outro(s) curso(s)
+     - `curso_id` não foi salvo corretamente
+     - Vídeo assistido antes de associar a aula ao curso
+
+#### Por que isso ajuda:
+
+- ✅ Identifica rapidamente se o problema é de curso errado
+- ✅ Ajuda a diagnosticar problemas de `curso_id` não salvo
+- ✅ Orienta o usuário para onde encontrar os dados
+- ✅ Evita confusão quando aluno aparece em um relatório mas não em outro
+
+#### Resposta à Pergunta:
+
+**Não há tempo mínimo para aparecer no relatório.** Se o aluno aparece no "Relatório Geral" mas não no "Progresso por Curso", as causas mais prováveis são:
+
+1. O vídeo foi assistido em **outro curso** (não o selecionado)
+2. O `curso_id` não foi salvo corretamente no banco de dados
+3. O vídeo foi assistido antes da aula ser associada ao curso
+
+---
+
+## [1.6.2] - 2025-10-16
+
+### 🔄 Ajuste de Nomenclatura
+
+**Alteração de "Lições" para "Aulas"**
+
+Todas as referências foram atualizadas para usar "Aulas" em vez de "Lições", alinhando com a terminologia preferida do usuário.
+
+#### Mudanças:
+- ✅ "Total de Lições" → "Total de Aulas"
+- ✅ "Progresso Médio de Todas as Lições" → "Progresso Médio de Todas as Aulas"
+- ✅ "Taxa de Conclusão (Lições ≥80%)" → "Taxa de Conclusão (Aulas ≥80%)"
+- ✅ "X de Y lições completas" → "X de Y aulas completas"
+- ✅ "Nenhum vídeo assistido nesta lição" → "Nenhum vídeo assistido nesta aula"
+- ✅ Comentários no código atualizados
+
+---
+
 ## [1.6.1] - 2025-10-16
 
 ### 🐛 Correção Importante

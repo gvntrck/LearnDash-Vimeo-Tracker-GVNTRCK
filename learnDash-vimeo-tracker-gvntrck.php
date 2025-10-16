@@ -3,7 +3,7 @@
  * Plugin Name: LearnDash Vimeo Tracker GVNTRCK
  * Plugin URI: https://github.com/gvntrck/LearnDash-Vimeo-Tracker-GVNTRCK
  * Description: Rastreia o tempo de visualização de vídeos Vimeo em cursos LearnDash, salvando o progresso do aluno no banco de dados.
- * Version: 1.6.1
+ * Version: 1.6.3
  * Author: GVNTRCK
  * Author URI: https://github.com/gvntrck
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define constantes do plugin
-define( 'LDVT_VERSION', '1.6.1' );
+define( 'LDVT_VERSION', '1.6.3' );
 define( 'LDVT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LDVT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'LDVT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -630,12 +630,24 @@ function ldvt_admin_page_progresso_curso() {
         
         <?php
         // Se tiver filtros aplicados, mostra o relatório
-        if ( $user && $filtro_curso ) {
-            ldvt_exibir_relatorio_progresso( $user, $filtro_curso, $table );
+        if ( ! empty( $filtro_email ) && ! empty( $filtro_curso ) ) {
+            if ( ! $user ) {
+                ?>
+                <div class="alert alert-danger">
+                    <strong><span class="dashicons dashicons-warning"></span> Email não encontrado!</strong><br>
+                    O email <strong><?php echo esc_html( $filtro_email ); ?></strong> não está cadastrado no sistema.
+                    <br><br>
+                    <small>Verifique se o email está correto ou se o usuário está cadastrado no WordPress.</small>
+                </div>
+                <?php
+            } else {
+                ldvt_exibir_relatorio_progresso( $user, $filtro_curso, $table );
+            }
         } elseif ( ! empty( $filtro_email ) || ! empty( $filtro_curso ) ) {
             ?>
             <div class="alert alert-info">
-                <strong>Atenção!</strong> Por favor, preencha ambos os filtros (Email e Curso) para visualizar o relatório.
+                <strong><span class="dashicons dashicons-info"></span> Atenção!</strong> 
+                Por favor, preencha ambos os filtros (Email e Curso) para visualizar o relatório.
             </div>
             <?php
         }
@@ -681,11 +693,11 @@ function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
         return;
     }
     
-    // Busca todas as lições do curso
+    // Busca todas as aulas do curso
     $lessons = learndash_get_lesson_list( $curso_id );
     
     if ( empty( $lessons ) ) {
-        echo '<div class="alert alert-warning">Este curso não possui lições cadastradas.</div>';
+        echo '<div class="alert alert-warning">Este curso não possui aulas cadastradas.</div>';
         return;
     }
     
@@ -695,6 +707,12 @@ function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
         $user->ID,
         $curso_id
     ), OBJECT_K );
+    
+    // Debug: Busca TODOS os registros do usuário (para verificar se há registros em outros cursos)
+    $todos_registros = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM $table WHERE user_id = %d",
+        $user->ID
+    ) );
     
     // Calcula estatísticas
     $total_aulas = count( $lessons );
@@ -718,7 +736,7 @@ function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
                 <span class="dashicons dashicons-book" style="vertical-align: middle;"></span>
                 <?php echo esc_html( $curso->post_title ); ?>
             </h5>
-            <p class="text-muted mb-0">Total de Lições: <?php echo $total_aulas; ?></p>
+            <p class="text-muted mb-0">Total de Aulas: <?php echo $total_aulas; ?></p>
         </div>
     </div>
     
@@ -801,7 +819,7 @@ function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
                         </small>
                     <?php else : ?>
                         <div class="alert alert-light mb-0 mt-2">
-                            <small>Nenhum vídeo assistido nesta lição.</small>
+                            <small>Nenhum vídeo assistido nesta aula.</small>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -823,7 +841,7 @@ function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
                 <div class="col-md-3">
                     <div class="p-3 bg-light rounded">
                         <h2 class="text-primary mb-0"><?php echo $total_aulas; ?></h2>
-                        <small class="text-muted">Total de Lições</small>
+                        <small class="text-muted">Total de Aulas</small>
                     </div>
                 </div>
                 <div class="col-md-3">
@@ -850,9 +868,9 @@ function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
             
             <div class="row">
                 <div class="col-md-6">
-                    <h6>Progresso Médio de Todas as Lições:</h6>
+                    <h6>Progresso Médio de Todas as Aulas:</h6>
                     <?php 
-                    // Calcula progresso médio considerando TODAS as lições (inclusive não iniciadas = 0%)
+                    // Calcula progresso médio considerando TODAS as aulas (inclusive não iniciadas = 0%)
                     $progresso_medio_geral = $total_aulas > 0 ? round( $progresso_total / $total_aulas, 1 ) : 0;
                     ?>
                     <div class="progress" style="height: 30px;">
@@ -866,12 +884,12 @@ function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
                         </div>
                     </div>
                     <small class="text-muted">
-                        Média considerando todas as <?php echo $total_aulas; ?> lições (inclusive não iniciadas)
+                        Média considerando todas as <?php echo $total_aulas; ?> aulas (inclusive não iniciadas)
                     </small>
                 </div>
                 
                 <div class="col-md-6">
-                    <h6>Taxa de Conclusão (Lições ≥80%):</h6>
+                    <h6>Taxa de Conclusão (Aulas ≥80%):</h6>
                     <?php 
                     $taxa_conclusao = $total_aulas > 0 ? round( ( $aulas_completas / $total_aulas ) * 100, 1 ) : 0;
                     ?>
@@ -886,7 +904,7 @@ function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
                         </div>
                     </div>
                     <small class="text-muted">
-                        <?php echo $aulas_completas; ?> de <?php echo $total_aulas; ?> lições completas
+                        <?php echo $aulas_completas; ?> de <?php echo $total_aulas; ?> aulas completas
                     </small>
                 </div>
             </div>
@@ -909,6 +927,46 @@ function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
             <?php endif; ?>
         </div>
     </div>
+    
+    <?php
+    // Mensagem informativa se não houver registros neste curso mas houver em outros
+    if ( empty( $registros ) && ! empty( $todos_registros ) ) :
+        $cursos_com_registro = array();
+        foreach ( $todos_registros as $reg ) {
+            if ( $reg->curso_id > 0 && ! in_array( $reg->curso_id, $cursos_com_registro ) ) {
+                $cursos_com_registro[] = $reg->curso_id;
+            }
+        }
+        
+        if ( ! empty( $cursos_com_registro ) ) :
+        ?>
+        <div class="alert alert-info mt-4">
+            <h6><span class="dashicons dashicons-info"></span> Informação Importante</h6>
+            <p class="mb-2">
+                <strong>Este aluno não possui registros de vídeos neste curso específico.</strong>
+            </p>
+            <p class="mb-2">
+                Porém, encontramos <strong><?php echo count( $todos_registros ); ?> registro(s)</strong> 
+                de vídeos assistidos em <strong><?php echo count( $cursos_com_registro ); ?> outro(s) curso(s)</strong>.
+            </p>
+            <hr>
+            <p class="mb-0">
+                <strong>Possíveis causas:</strong>
+            </p>
+            <ul class="mb-0">
+                <li>O aluno assistiu vídeos em outro(s) curso(s)</li>
+                <li>O <code>curso_id</code> não foi salvo corretamente no banco de dados</li>
+                <li>O vídeo foi assistido antes de associar a aula ao curso</li>
+            </ul>
+            <hr>
+            <p class="mb-0">
+                <strong>Dica:</strong> Verifique o "Relatório Geral" filtrando por este email para ver todos os registros.
+            </p>
+        </div>
+        <?php
+        endif;
+    endif;
+    ?>
     <?php
 }
 
