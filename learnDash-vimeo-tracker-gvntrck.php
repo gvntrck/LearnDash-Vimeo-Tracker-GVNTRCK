@@ -3,7 +3,7 @@
  * Plugin Name: LearnDash Vimeo Tracker GVNTRCK
  * Plugin URI: https://github.com/gvntrck/LearnDash-Vimeo-Tracker-GVNTRCK
  * Description: Rastreia o tempo de visualização de vídeos Vimeo em cursos LearnDash, salvando o progresso do aluno no banco de dados.
- * Version: 1.6.0
+ * Version: 1.6.1
  * Author: GVNTRCK
  * Author URI: https://github.com/gvntrck
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define constantes do plugin
-define( 'LDVT_VERSION', '1.6.0' );
+define( 'LDVT_VERSION', '1.6.1' );
 define( 'LDVT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LDVT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'LDVT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -850,24 +850,28 @@ function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
             
             <div class="row">
                 <div class="col-md-6">
-                    <h6>Progresso Médio das Lições com Vídeo:</h6>
+                    <h6>Progresso Médio de Todas as Lições:</h6>
                     <?php 
-                    $progresso_medio = $aulas_com_video > 0 ? round( $progresso_total / $aulas_com_video, 1 ) : 0;
+                    // Calcula progresso médio considerando TODAS as lições (inclusive não iniciadas = 0%)
+                    $progresso_medio_geral = $total_aulas > 0 ? round( $progresso_total / $total_aulas, 1 ) : 0;
                     ?>
                     <div class="progress" style="height: 30px;">
-                        <div class="progress-bar <?php echo $progresso_medio >= 80 ? 'bg-success' : ( $progresso_medio >= 50 ? 'bg-warning' : 'bg-danger' ); ?>" 
+                        <div class="progress-bar <?php echo $progresso_medio_geral >= 80 ? 'bg-success' : ( $progresso_medio_geral >= 50 ? 'bg-warning' : 'bg-danger' ); ?>" 
                              role="progressbar" 
-                             style="width: <?php echo $progresso_medio; ?>%;" 
-                             aria-valuenow="<?php echo $progresso_medio; ?>" 
+                             style="width: <?php echo $progresso_medio_geral; ?>%;" 
+                             aria-valuenow="<?php echo $progresso_medio_geral; ?>" 
                              aria-valuemin="0" 
                              aria-valuemax="100">
-                            <strong><?php echo $progresso_medio; ?>%</strong>
+                            <strong><?php echo $progresso_medio_geral; ?>%</strong>
                         </div>
                     </div>
+                    <small class="text-muted">
+                        Média considerando todas as <?php echo $total_aulas; ?> lições (inclusive não iniciadas)
+                    </small>
                 </div>
                 
                 <div class="col-md-6">
-                    <h6>Taxa de Conclusão do Curso:</h6>
+                    <h6>Taxa de Conclusão (Lições ≥80%):</h6>
                     <?php 
                     $taxa_conclusao = $total_aulas > 0 ? round( ( $aulas_completas / $total_aulas ) * 100, 1 ) : 0;
                     ?>

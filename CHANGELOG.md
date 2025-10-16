@@ -1,5 +1,44 @@
 # Changelog - LearnDash Vimeo Tracker GVNTRCK
 
+## [1.6.1] - 2025-10-16
+
+### 🐛 Correção Importante
+
+**Cálculo do Progresso Médio Corrigido**
+
+#### O que foi corrigido:
+
+**Antes (INCORRETO):**
+- Calculava: `soma dos progressos ÷ lições com registro no banco`
+- **Problema:** Ignorava lições não iniciadas
+- **Exemplo:** 2 lições (100% + 80%) ÷ 2 = **90%** (inflado!)
+
+**Agora (CORRETO):**
+- Calcula: `soma dos progressos ÷ TODAS as lições do curso`
+- **Solução:** Lições não iniciadas contam como 0%
+- **Exemplo:** (100% + 80% + 0% + 0% + 0%) ÷ 5 = **36%** (real!)
+
+#### Mudanças:
+
+1. **Nome da Métrica Atualizado:**
+   - Antes: "Progresso Médio das Lições com Vídeo"
+   - Agora: "Progresso Médio de Todas as Lições"
+
+2. **Texto Explicativo Adicionado:**
+   - "Média considerando todas as X lições (inclusive não iniciadas)"
+
+3. **Documentação Completa:**
+   - Criado arquivo `METRICAS.md` explicando todos os cálculos
+
+#### Por que isso importa:
+
+- ✅ Reflete o progresso **real** do aluno no curso
+- ✅ Não infla artificialmente os números
+- ✅ Considera lições não iniciadas (0%)
+- ✅ Não precisa saber duração de vídeos não assistidos
+
+---
+
 ## [1.6.0] - 2025-10-16
 
 ### ✨ Nova Funcionalidade: Relatório de Progresso por Curso
