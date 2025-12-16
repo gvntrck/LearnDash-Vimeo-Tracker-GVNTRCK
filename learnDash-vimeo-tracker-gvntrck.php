@@ -3,7 +3,7 @@
  * Plugin Name: LearnDash Vimeo Tracker GVNTRCK
  * Plugin URI: https://github.com/gvntrck/LearnDash-Vimeo-Tracker-GVNTRCK
  * Description: Rastreia o tempo de visualização de vídeos Vimeo em cursos LearnDash, salvando o progresso do aluno no banco de dados.
- * Version: 1.7.4
+ * Version: 1.7.5
  * Author: GVNTRCK
  * Author URI: https://github.com/gvntrck
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define constantes do plugin
-define( 'LDVT_VERSION', '1.7.4' );
+define( 'LDVT_VERSION', '1.7.5' );
 define( 'LDVT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LDVT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'LDVT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -1097,24 +1097,6 @@ function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
                     </small>
                 </div>
             </div>
-            
-            <?php if ( $taxa_conclusao >= 80 ) : ?>
-                <div class="alert alert-success mt-3 mb-0">
-                    <strong><span class="dashicons dashicons-yes-alt"></span> Parabéns!</strong> 
-                    O aluno está com excelente progresso no curso!
-                </div>
-            <?php elseif ( $taxa_conclusao >= 50 ) : ?>
-                <div class="alert alert-info mt-3 mb-0">
-                    <strong><span class="dashicons dashicons-info"></span> Bom progresso!</strong> 
-                    O aluno está avançando no curso.
-                </div>
-            <?php else : ?>
-                <div class="alert alert-warning mt-3 mb-0">
-                    <strong><span class="dashicons dashicons-warning"></span> Atenção!</strong> 
-                    O aluno precisa de mais dedicação para concluir o curso.
-                </div>
-            <?php endif; ?>
-        </div>
     </div>
     
     <?php
