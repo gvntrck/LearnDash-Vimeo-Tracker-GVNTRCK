@@ -3,7 +3,7 @@
  * Plugin Name: LearnDash Vimeo Tracker GVNTRCK
  * Plugin URI: https://github.com/gvntrck/LearnDash-Vimeo-Tracker-GVNTRCK
  * Description: Rastreia o tempo de visualização de vídeos Vimeo em cursos LearnDash, salvando o progresso do aluno no banco de dados.
- * Version: 1.7.2
+ * Version: 1.7.3
  * Author: GVNTRCK
  * Author URI: https://github.com/gvntrck
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define constantes do plugin
-define( 'LDVT_VERSION', '1.7.2' );
+define( 'LDVT_VERSION', '1.7.3' );
 define( 'LDVT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LDVT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'LDVT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -433,7 +433,23 @@ function ldvt_admin_page() {
                                         <?php endif; ?>
                                     </td>
                                     <td><?php echo esc_html( $user ? $user->user_email : 'N/A' ); ?></td>
-                                    <td><?php echo esc_html( $curso_nome ); ?></td>
+                                    <td>
+                                        <?php 
+                                        $edit_link = $row->curso_id ? get_edit_post_link( $row->curso_id ) : '';
+                                        if ( $edit_link ) {
+                                            // Adiciona a tab do dashboard do LearnDash se possível
+                                            $edit_link = add_query_arg( 'currentTab', 'learndash_sfwd-courses_dashboard', $edit_link );
+                                            ?>
+                                            <a href="<?php echo esc_url( $edit_link ); ?>" target="_blank" title="Editar Curso no LearnDash" class="text-decoration-none">
+                                                <?php echo esc_html( $curso_nome ); ?>
+                                                <span class="dashicons dashicons-external" style="font-size: 12px; width: 12px; height: 12px; vertical-align: text-top; color: #777;"></span>
+                                            </a>
+                                            <?php
+                                        } else {
+                                            echo esc_html( $curso_nome );
+                                        }
+                                        ?>
+                                    </td>
                                     <td><?php echo esc_html( $aula_nome ); ?></td>
                                     <td>
                                         <span class="badge bg-info"><?php echo esc_html( $tempo_formatado ); ?></span>
