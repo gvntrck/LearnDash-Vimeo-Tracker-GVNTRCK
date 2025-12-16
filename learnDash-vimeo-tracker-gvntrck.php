@@ -3,7 +3,7 @@
  * Plugin Name: LearnDash Vimeo Tracker GVNTRCK
  * Plugin URI: https://github.com/gvntrck/LearnDash-Vimeo-Tracker-GVNTRCK
  * Description: Rastreia o tempo de visualização de vídeos Vimeo em cursos LearnDash, salvando o progresso do aluno no banco de dados.
- * Version: 1.7.1
+ * Version: 1.7.2
  * Author: GVNTRCK
  * Author URI: https://github.com/gvntrck
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define constantes do plugin
-define( 'LDVT_VERSION', '1.7.1' );
+define( 'LDVT_VERSION', '1.7.2' );
 define( 'LDVT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LDVT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'LDVT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -424,6 +424,13 @@ function ldvt_admin_page() {
                                 <tr>
                                     <td>
                                         <strong><?php echo esc_html( $user ? $user->display_name : 'Usuário #' . $row->user_id ); ?></strong>
+                                        <?php if ( $user && ! empty( $user->user_email ) ) : ?>
+                                            <a href="?page=learndash-vimeo-tracker&filtro_email=<?php echo urlencode( $user->user_email ); ?>" 
+                                               title="Filtrar por <?php echo esc_attr( $user->user_email ); ?>"
+                                               class="text-decoration-none ms-2">
+                                                <span class="dashicons dashicons-search" style="font-size: 18px; width: 18px; height: 18px; vertical-align: middle; color: #555;"></span>
+                                            </a>
+                                        <?php endif; ?>
                                     </td>
                                     <td><?php echo esc_html( $user ? $user->user_email : 'N/A' ); ?></td>
                                     <td><?php echo esc_html( $curso_nome ); ?></td>
