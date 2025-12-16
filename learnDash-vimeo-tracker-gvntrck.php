@@ -3,7 +3,7 @@
  * Plugin Name: LearnDash Vimeo Tracker GVNTRCK
  * Plugin URI: https://github.com/gvntrck/LearnDash-Vimeo-Tracker-GVNTRCK
  * Description: Rastreia o tempo de visualização de vídeos Vimeo em cursos LearnDash, salvando o progresso do aluno no banco de dados.
- * Version: 1.7.3
+ * Version: 1.7.4
  * Author: GVNTRCK
  * Author URI: https://github.com/gvntrck
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define constantes do plugin
-define( 'LDVT_VERSION', '1.7.3' );
+define( 'LDVT_VERSION', '1.7.4' );
 define( 'LDVT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LDVT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'LDVT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -177,6 +177,63 @@ function ldvt_vimeo_tracking_script() {
     } )();
     </script>
     <?php
+}
+
+// === CALLBACK AJAX PARA BUSCAR CURSOS DO ALUNO ===
+
+add_action( 'wp_ajax_ldvt_get_user_courses', 'ldvt_get_user_courses_callback' );
+
+/**
+ * Callback AJAX para buscar cursos em que o aluno está inscrito
+ */
+function ldvt_get_user_courses_callback() {
+    // Verifica permissões (apenas admins devem acessar isso)
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( 'Permissão negada.' );
+    }
+
+    $email = isset( $_POST['email'] ) ? sanitize_email( $_POST['email'] ) : '';
+    
+    if ( empty( $email ) ) {
+        wp_send_json_error( 'Email não fornecido.' );
+    }
+
+    $user = get_user_by( 'email', $email );
+    
+    if ( ! $user ) {
+        wp_send_json_error( 'Usuário não encontrado.' );
+    }
+
+    if ( ! function_exists( 'learndash_user_get_enrolled_courses' ) ) {
+        wp_send_json_error( 'LearnDash não está ativo.' );
+    }
+
+    // Busca IDs dos cursos do usuário
+    $course_ids = learndash_user_get_enrolled_courses( $user->ID );
+    
+    // Se não tiver cursos, retorna array vazio
+    if ( empty( $course_ids ) ) {
+        wp_send_json_success( array() );
+    }
+
+    // Busca os detalhes dos cursos
+    $cursos = get_posts( array(
+        'post_type'      => 'sfwd-courses',
+        'post__in'       => $course_ids,
+        'posts_per_page' => -1,
+        'orderby'        => 'title',
+        'order'          => 'ASC',
+    ) );
+
+    $cursos_data = array();
+    foreach ( $cursos as $curso ) {
+        $cursos_data[] = array(
+            'id'    => $curso->ID,
+            'title' => $curso->post_title,
+        );
+    }
+
+    wp_send_json_success( $cursos_data );
 }
 
 // === CALLBACK AJAX PARA SALVAR TEMPO NO BANCO ===
@@ -587,13 +644,25 @@ function ldvt_admin_page_progresso_curso() {
         $user = get_user_by( 'email', $filtro_email );
     }
     
-    // Busca todos os cursos LearnDash
-    $cursos = get_posts( array(
+    // Busca cursos (filtrando pelo usuário se fornecido)
+    $args_cursos = array(
         'post_type'      => 'sfwd-courses',
         'posts_per_page' => -1,
         'orderby'        => 'title',
         'order'          => 'ASC',
-    ) );
+    );
+
+    if ( $user ) {
+        $user_courses = learndash_user_get_enrolled_courses( $user->ID );
+        if ( ! empty( $user_courses ) ) {
+            $args_cursos['post__in'] = $user_courses;
+            $cursos = get_posts( $args_cursos );
+        } else {
+            $cursos = array(); // Usuário não tem cursos
+        }
+    } else {
+        $cursos = get_posts( $args_cursos );
+    }
     
     ?>
     <div class="wrap">
@@ -675,6 +744,88 @@ function ldvt_admin_page_progresso_curso() {
             <?php
         }
         ?>
+        
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const emailInput = document.getElementById('filtro_email');
+            const cursoSelect = document.getElementById('filtro_curso');
+            let typingTimer;
+            const doneTypingInterval = 800; // Tempo em ms para esperar antes de buscar
+
+            if (!emailInput || !cursoSelect) return;
+
+            // Função para buscar cursos
+            const fetchCourses = () => {
+                const email = emailInput.value;
+                
+                // Se email estiver vazio, não faz nada (ou poderia buscar todos, mas melhor manter o estado atual)
+                if (!email) return;
+
+                // Mostra loading no select
+                const originalOptions = cursoSelect.innerHTML;
+                cursoSelect.innerHTML = '<option value="">Carregando cursos...</option>';
+                cursoSelect.disabled = true;
+
+                const formData = new FormData();
+                formData.append('action', 'ldvt_get_user_courses');
+                formData.append('email', email);
+
+                fetch(ajaxurl, {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(response => {
+                    cursoSelect.disabled = false;
+                    
+                    if (response.success) {
+                        const cursos = response.data;
+                        
+                        // Limpa e reconstrói as opções
+                        cursoSelect.innerHTML = '<option value="">Selecione um curso</option>';
+                        
+                        if (cursos.length === 0) {
+                             const option = document.createElement('option');
+                             option.text = 'Nenhum curso encontrado para este aluno';
+                             option.disabled = true;
+                             cursoSelect.add(option);
+                        } else {
+                            cursos.forEach(curso => {
+                                const option = document.createElement('option');
+                                option.value = curso.id;
+                                option.text = curso.title;
+                                cursoSelect.add(option);
+                            });
+                        }
+                    } else {
+                        // Se der erro (ex: user não encontrado), volta ao estado inicial ou mostra erro
+                        // Mas para UX, se o email for inválido, talvez manter os cursos anteriores ou limpar?
+                        // Vamos limpar para indicar que esse email não tem cursos
+                         cursoSelect.innerHTML = '<option value="">Usuário não encontrado ou sem cursos</option>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro:', error);
+                    cursoSelect.disabled = false;
+                    cursoSelect.innerHTML = originalOptions; // Restaura em caso de erro de rede
+                });
+            };
+
+            // Evento ao sair do campo
+            emailInput.addEventListener('blur', fetchCourses);
+            
+            // Evento ao pressionar Enter (para evitar submit imediato se quiser só filtrar cursos, mas o form submit vai acontecer anyway)
+            // Vamos adicionar debounce na digitação também
+            emailInput.addEventListener('keyup', () => {
+                clearTimeout(typingTimer);
+                typingTimer = setTimeout(fetchCourses, doneTypingInterval);
+            });
+
+            emailInput.addEventListener('keydown', () => {
+                clearTimeout(typingTimer);
+            });
+        });
+        </script>
         
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.min.js"></script>
     </div>
