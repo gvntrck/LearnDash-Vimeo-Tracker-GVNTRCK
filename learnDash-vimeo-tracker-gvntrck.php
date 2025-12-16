@@ -3,7 +3,7 @@
  * Plugin Name: LearnDash Vimeo Tracker GVNTRCK
  * Plugin URI: https://github.com/gvntrck/LearnDash-Vimeo-Tracker-GVNTRCK
  * Description: Rastreia o tempo de visualização de vídeos Vimeo em cursos LearnDash, salvando o progresso do aluno no banco de dados.
- * Version: 1.7.5
+ * Version: 1.7.6
  * Author: GVNTRCK
  * Author URI: https://github.com/gvntrck
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define constantes do plugin
-define( 'LDVT_VERSION', '1.7.5' );
+define( 'LDVT_VERSION', '1.7.6' );
 define( 'LDVT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LDVT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'LDVT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -489,7 +489,16 @@ function ldvt_admin_page() {
                                             </a>
                                         <?php endif; ?>
                                     </td>
-                                    <td><?php echo esc_html( $user ? $user->user_email : 'N/A' ); ?></td>
+                                    <td>
+                                        <?php if ( $user ) : ?>
+                                            <a href="<?php echo esc_url( get_edit_user_link( $user->ID ) ); ?>" target="_blank" title="Editar Usuário" class="text-decoration-none">
+                                                <?php echo esc_html( $user->user_email ); ?>
+                                                <span class="dashicons dashicons-external" style="font-size: 12px; width: 12px; height: 12px; vertical-align: text-top; color: #777;"></span>
+                                            </a>
+                                        <?php else : ?>
+                                            N/A
+                                        <?php endif; ?>
+                                    </td>
                                     <td>
                                         <?php 
                                         $edit_link = $row->curso_id ? get_edit_post_link( $row->curso_id ) : '';
