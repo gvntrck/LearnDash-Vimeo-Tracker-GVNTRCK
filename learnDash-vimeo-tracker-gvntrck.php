@@ -25,6 +25,97 @@ define( 'LDVT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LDVT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'LDVT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
 
+// === REGRAS DE CONCLUSÃO ===
+
+/**
+ * Retorna o percentual mínimo para considerar a aula concluída.
+ *
+ * @return float
+ */
+function ldvt_get_completion_threshold() {
+    $threshold = apply_filters( 'ldvt_completion_threshold', 70 );
+
+    if ( ! is_numeric( $threshold ) ) {
+        $threshold = 70;
+    }
+
+    return max( 0, min( 100, (float) $threshold ) );
+}
+
+/**
+ * Retorna o percentual mínimo formatado para exibição.
+ *
+ * @return string
+ */
+function ldvt_get_completion_threshold_label() {
+    $threshold = ldvt_get_completion_threshold();
+    $decimals  = floor( $threshold ) === $threshold ? 0 : 1;
+
+    return number_format_i18n( $threshold, $decimals );
+}
+
+/**
+ * Verifica se o progresso atingiu o percentual mínimo de conclusão.
+ *
+ * @param int $tempo         Tempo assistido.
+ * @param int $duracao_total Duração total do vídeo.
+ *
+ * @return bool
+ */
+function ldvt_has_completion_progress( $tempo, $duracao_total ) {
+    if ( $tempo <= 0 || $duracao_total <= 0 ) {
+        return false;
+    }
+
+    $progresso = ( $tempo / $duracao_total ) * 100;
+
+    return $progresso >= ldvt_get_completion_threshold();
+}
+
+/**
+ * Marca a etapa atual como concluída no LearnDash quando o limiar é atingido.
+ *
+ * @param int $user_id       ID do usuário.
+ * @param int $course_id     ID do curso.
+ * @param int $step_id       ID da etapa.
+ * @param int $tempo         Tempo assistido.
+ * @param int $duracao_total Duração total do vídeo.
+ *
+ * @return bool
+ */
+function ldvt_maybe_mark_step_complete( $user_id, $course_id, $step_id, $tempo, $duracao_total ) {
+    if ( ! $user_id || ! $step_id || ! ldvt_has_completion_progress( $tempo, $duracao_total ) ) {
+        return false;
+    }
+
+    if ( ! function_exists( 'learndash_process_mark_complete' ) || ! function_exists( 'learndash_user_progress_is_step_complete' ) ) {
+        return false;
+    }
+
+    if ( ! $course_id && function_exists( 'learndash_get_course_id' ) ) {
+        $course_id = (int) learndash_get_course_id( $step_id );
+    }
+
+    if ( ! $course_id ) {
+        return false;
+    }
+
+    $step_type = get_post_type( $step_id );
+    if ( ! in_array( $step_type, array( 'sfwd-lessons', 'sfwd-topic' ), true ) ) {
+        return false;
+    }
+
+    if ( learndash_user_progress_is_step_complete( $user_id, $course_id, $step_id ) ) {
+        return true;
+    }
+
+    if ( function_exists( 'learndash_can_complete_step' ) && ! learndash_can_complete_step( $user_id, $step_id, $course_id ) ) {
+        return false;
+    }
+
+    return (bool) learndash_process_mark_complete( $user_id, $step_id, false, $course_id, false );
+}
+
 // === HOOKS DE ATIVAÇÃO E DESATIVAÇÃO ===
 
 register_activation_hook( __FILE__, 'ldvt_plugin_activate' );
@@ -282,7 +373,9 @@ function ldvt_salvar_tempo_video_callback() {
         )
     );
 
-    wp_send_json_success( 'Tempo salvo.' );
+    $step_completed = ldvt_maybe_mark_step_complete( $user_id, $curso_id, $aula_id, $tempo, $duracao_total );
+
+    wp_send_json_success( $step_completed ? 'Tempo salvo e etapa concluída no LearnDash.' : 'Tempo salvo.' );
 }
 
 // === CRIA TABELA SE NÃO EXISTIR ===
@@ -363,7 +456,8 @@ function ldvt_add_admin_menu() {
 function ldvt_admin_page() {
     global $wpdb;
 
-    $table = $wpdb->prefix . 'tempo_video';
+    $table                = $wpdb->prefix . 'tempo_video';
+    $completion_threshold = ldvt_get_completion_threshold();
     
     // Paginação
     $por_pagina = 50;
@@ -525,7 +619,7 @@ function ldvt_admin_page() {
                                     </td>
                                     <td>
                                         <div class="progress" style="height: 25px; min-width: 100px;">
-                                            <div class="progress-bar <?php echo $progresso >= 80 ? 'bg-success' : ( $progresso >= 50 ? 'bg-warning' : 'bg-danger' ); ?>" 
+                                            <div class="progress-bar <?php echo $progresso >= $completion_threshold ? 'bg-success' : ( $progresso >= 50 ? 'bg-warning' : 'bg-danger' ); ?>" 
                                                  role="progressbar" 
                                                  style="width: <?php echo $progresso; ?>%;" 
                                                  aria-valuenow="<?php echo $progresso; ?>" 
@@ -875,6 +969,9 @@ function ldvt_admin_page_progresso_curso() {
  */
 function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
     global $wpdb;
+
+    $completion_threshold = ldvt_get_completion_threshold();
+    $completion_label     = ldvt_get_completion_threshold_label();
     
     $curso = get_post( $curso_id );
     if ( ! $curso ) {
@@ -963,7 +1060,7 @@ function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
                                 $progresso = $registro->duracao_total > 0 ? round( ( $registro->tempo / $registro->duracao_total ) * 100, 1 ) : 0;
                                 $progresso_total += $progresso;
                                 
-                                if ( $progresso >= 80 ) {
+                                if ( $progresso >= $completion_threshold ) {
                                     $aulas_completas++;
                                     $status = 'Completo';
                                     $badge_class = 'bg-success';
@@ -1007,7 +1104,7 @@ function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
                             </td>
                             <td>
                                 <div class="progress" style="height: 25px; min-width: 100px;">
-                                    <div class="progress-bar <?php echo $progresso >= 80 ? 'bg-success' : ( $progresso >= 50 ? 'bg-warning' : 'bg-danger' ); ?>" 
+                                    <div class="progress-bar <?php echo $progresso >= $completion_threshold ? 'bg-success' : ( $progresso >= 50 ? 'bg-warning' : 'bg-danger' ); ?>" 
                                          role="progressbar" 
                                          style="width: <?php echo $progresso; ?>%;" 
                                          aria-valuenow="<?php echo $progresso; ?>" 
@@ -1045,7 +1142,7 @@ function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
                 <div class="col-md-3">
                     <div class="p-3 bg-success bg-opacity-10 rounded">
                         <h2 class="text-success mb-0"><?php echo $aulas_completas; ?></h2>
-                        <small class="text-muted">Completas (≥80%)</small>
+                        <small class="text-muted">Completas (≥<?php echo esc_html( $completion_label ); ?>%)</small>
                     </div>
                 </div>
                 <div class="col-md-3">
@@ -1072,7 +1169,7 @@ function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
                     $progresso_medio_geral = $total_aulas > 0 ? round( $progresso_total / $total_aulas, 1 ) : 0;
                     ?>
                     <div class="progress" style="height: 30px;">
-                        <div class="progress-bar <?php echo $progresso_medio_geral >= 80 ? 'bg-success' : ( $progresso_medio_geral >= 50 ? 'bg-warning' : 'bg-danger' ); ?>" 
+                        <div class="progress-bar <?php echo $progresso_medio_geral >= $completion_threshold ? 'bg-success' : ( $progresso_medio_geral >= 50 ? 'bg-warning' : 'bg-danger' ); ?>" 
                              role="progressbar" 
                              style="width: <?php echo $progresso_medio_geral; ?>%;" 
                              aria-valuenow="<?php echo $progresso_medio_geral; ?>" 
@@ -1087,12 +1184,12 @@ function ldvt_exibir_relatorio_progresso( $user, $curso_id, $table ) {
                 </div>
                 
                 <div class="col-md-6">
-                    <h6>Taxa de Conclusão (Aulas ≥80%):</h6>
+                    <h6>Taxa de Conclusão (Aulas ≥<?php echo esc_html( $completion_label ); ?>%):</h6>
                     <?php 
                     $taxa_conclusao = $total_aulas > 0 ? round( ( $aulas_completas / $total_aulas ) * 100, 1 ) : 0;
                     ?>
                     <div class="progress" style="height: 30px;">
-                        <div class="progress-bar <?php echo $taxa_conclusao >= 80 ? 'bg-success' : ( $taxa_conclusao >= 50 ? 'bg-info' : 'bg-danger' ); ?>" 
+                        <div class="progress-bar <?php echo $taxa_conclusao >= $completion_threshold ? 'bg-success' : ( $taxa_conclusao >= 50 ? 'bg-info' : 'bg-danger' ); ?>" 
                              role="progressbar" 
                              style="width: <?php echo $taxa_conclusao; ?>%;" 
                              aria-valuenow="<?php echo $taxa_conclusao; ?>" 
