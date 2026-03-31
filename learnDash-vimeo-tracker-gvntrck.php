@@ -24,8 +24,76 @@ define( 'LDVT_VERSION', '1.7.6' );
 define( 'LDVT_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LDVT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'LDVT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
+define( 'LDVT_SETTINGS_OPTION', 'ldvt_settings' );
 
 // === REGRAS DE CONCLUSÃO ===
+
+/**
+ * Retorna as configurações padrão do plugin.
+ *
+ * @return array
+ */
+function ldvt_get_default_settings() {
+    return array(
+        'auto_complete_enabled' => 1,
+        'completion_threshold'  => 70,
+    );
+}
+
+/**
+ * Sanitiza o percentual de conclusão.
+ *
+ * @param mixed $value Valor informado.
+ *
+ * @return float
+ */
+function ldvt_sanitize_completion_threshold( $value ) {
+    $defaults = ldvt_get_default_settings();
+    $value    = is_numeric( $value ) ? (float) $value : (float) $defaults['completion_threshold'];
+
+    return max( 1, min( 100, $value ) );
+}
+
+/**
+ * Sanitiza as configurações do plugin.
+ *
+ * @param array $input Dados enviados pelo formulário.
+ *
+ * @return array
+ */
+function ldvt_sanitize_settings( $input ) {
+    $defaults = ldvt_get_default_settings();
+    $input    = is_array( $input ) ? $input : array();
+
+    return array(
+        'auto_complete_enabled' => ! empty( $input['auto_complete_enabled'] ) ? 1 : 0,
+        'completion_threshold'  => ldvt_sanitize_completion_threshold( $input['completion_threshold'] ?? $defaults['completion_threshold'] ),
+    );
+}
+
+/**
+ * Retorna as configurações atuais do plugin.
+ *
+ * @return array
+ */
+function ldvt_get_settings() {
+    $defaults = ldvt_get_default_settings();
+    $settings = get_option( LDVT_SETTINGS_OPTION, array() );
+    $settings = is_array( $settings ) ? $settings : array();
+
+    return ldvt_sanitize_settings( wp_parse_args( $settings, $defaults ) );
+}
+
+/**
+ * Verifica se a conclusão automática está habilitada.
+ *
+ * @return bool
+ */
+function ldvt_is_auto_completion_enabled() {
+    $settings = ldvt_get_settings();
+
+    return ! empty( $settings['auto_complete_enabled'] );
+}
 
 /**
  * Retorna o percentual mínimo para considerar a aula concluída.
@@ -33,14 +101,11 @@ define( 'LDVT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
  * @return float
  */
 function ldvt_get_completion_threshold() {
-    // Altere o valor 70 abaixo para definir a porcentagem mínima de conclusão automática no LearnDash.
-    $threshold = apply_filters( 'ldvt_completion_threshold', 70 );
+    // Valor padrão usado quando o site ainda não salvou um percentual personalizado na aba Ajustes.
+    $settings  = ldvt_get_settings();
+    $threshold = apply_filters( 'ldvt_completion_threshold', $settings['completion_threshold'], $settings );
 
-    if ( ! is_numeric( $threshold ) ) {
-        $threshold = 70;
-    }
-
-    return max( 0, min( 100, (float) $threshold ) );
+    return ldvt_sanitize_completion_threshold( $threshold );
 }
 
 /**
@@ -85,7 +150,7 @@ function ldvt_has_completion_progress( $tempo, $duracao_total ) {
  * @return bool
  */
 function ldvt_maybe_mark_step_complete( $user_id, $course_id, $step_id, $tempo, $duracao_total ) {
-    if ( ! $user_id || ! $step_id || ! ldvt_has_completion_progress( $tempo, $duracao_total ) ) {
+    if ( ! ldvt_is_auto_completion_enabled() || ! $user_id || ! $step_id || ! ldvt_has_completion_progress( $tempo, $duracao_total ) ) {
         return false;
     }
 
@@ -127,6 +192,11 @@ register_deactivation_hook( __FILE__, 'ldvt_plugin_deactivate' );
  */
 function ldvt_plugin_activate() {
     ldvt_criar_tabela_tempo_video();
+
+    if ( false === get_option( LDVT_SETTINGS_OPTION, false ) ) {
+        add_option( LDVT_SETTINGS_OPTION, ldvt_get_default_settings() );
+    }
+
     flush_rewrite_rules();
 }
 
@@ -415,6 +485,48 @@ function ldvt_criar_tabela_tempo_video() {
 // === PÁGINA DE ADMINISTRAÇÃO ===
 
 add_action( 'admin_menu', 'ldvt_add_admin_menu' );
+add_action( 'admin_init', 'ldvt_register_settings' );
+
+/**
+ * Registra as configurações do plugin.
+ */
+function ldvt_register_settings() {
+    register_setting(
+        'ldvt_settings_group',
+        LDVT_SETTINGS_OPTION,
+        'ldvt_sanitize_settings'
+    );
+}
+
+/**
+ * Renderiza o cabeçalho com abas do admin.
+ *
+ * @param string $current_page Página atual.
+ * @param string $icon         Ícone dashicon.
+ * @param string $title        Título da página.
+ * @param string $description  Descrição da página.
+ */
+function ldvt_render_admin_header( $current_page, $icon, $title, $description ) {
+    $tabs = array(
+        'learndash-vimeo-tracker'        => 'Relatório Geral',
+        'learndash-vimeo-tracker-curso'  => 'Progresso por Curso',
+        'learndash-vimeo-tracker-ajustes' => 'Ajustes',
+    );
+    ?>
+    <h1>
+        <span class="dashicons <?php echo esc_attr( $icon ); ?>" style="font-size: 30px; margin-right: 10px;"></span>
+        <?php echo esc_html( $title ); ?>
+    </h1>
+    <p><?php echo esc_html( $description ); ?></p>
+    <nav class="nav-tab-wrapper wp-clearfix" style="margin-bottom: 20px;">
+        <?php foreach ( $tabs as $slug => $label ) : ?>
+            <a href="<?php echo esc_url( admin_url( 'admin.php?page=' . $slug ) ); ?>" class="nav-tab <?php echo $slug === $current_page ? 'nav-tab-active' : ''; ?>">
+                <?php echo esc_html( $label ); ?>
+            </a>
+        <?php endforeach; ?>
+    </nav>
+    <?php
+}
 
 /**
  * Adiciona menu de administração do plugin
@@ -448,6 +560,16 @@ function ldvt_add_admin_menu() {
         'manage_options',
         'learndash-vimeo-tracker-curso',
         'ldvt_admin_page_progresso_curso'
+    );
+
+    // Submenu: Ajustes
+    add_submenu_page(
+        'learndash-vimeo-tracker',
+        'Ajustes',
+        'Ajustes',
+        'manage_options',
+        'learndash-vimeo-tracker-ajustes',
+        'ldvt_admin_page_settings'
     );
 }
 
@@ -498,13 +620,8 @@ function ldvt_admin_page() {
 
     ?>
     <div class="wrap">
-        <h1>
-            <span class="dashicons dashicons-video-alt3" style="font-size: 30px; margin-right: 10px;"></span>
-            LearnDash Vimeo Tracker
-        </h1>
-        <p>Relatório de tempo assistido de vídeos Vimeo pelos alunos.</p>
-
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+        <?php ldvt_render_admin_header( 'learndash-vimeo-tracker', 'dashicons-video-alt3', 'LearnDash Vimeo Tracker', 'Relatório de tempo assistido de vídeos Vimeo pelos alunos.' ); ?>
         
         <!-- Filtro por Email -->
         <div class="mb-3">
@@ -719,6 +836,108 @@ function ldvt_admin_page() {
 }
 
 /**
+ * Renderiza a página de Ajustes
+ */
+function ldvt_admin_page_settings() {
+    $settings = ldvt_get_settings();
+    ?>
+    <div class="wrap">
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+        <?php ldvt_render_admin_header( 'learndash-vimeo-tracker-ajustes', 'dashicons-admin-generic', 'Ajustes', 'Configure a conclusão automática de aulas no LearnDash por site.' ); ?>
+        <?php settings_errors(); ?>
+
+        <div class="card">
+            <div class="card-body">
+                <form method="post" action="options.php">
+                    <?php settings_fields( 'ldvt_settings_group' ); ?>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-bold d-block">Conclusão Automática no LearnDash</label>
+                        <div class="form-check form-switch">
+                            <input
+                                class="form-check-input"
+                                type="checkbox"
+                                role="switch"
+                                id="ldvt_auto_complete_enabled"
+                                name="<?php echo esc_attr( LDVT_SETTINGS_OPTION ); ?>[auto_complete_enabled]"
+                                value="1"
+                                <?php checked( ! empty( $settings['auto_complete_enabled'] ) ); ?>
+                            >
+                            <label class="form-check-label" for="ldvt_auto_complete_enabled">
+                                Ativar marcação automática de aulas/tópicos concluídos
+                            </label>
+                        </div>
+                        <small class="text-muted d-block mt-2">
+                            Quando ativado, o plugin tenta marcar automaticamente a etapa como concluída no LearnDash assim que o percentual mínimo for atingido.
+                        </small>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="ldvt_completion_threshold" class="form-label fw-bold">Porcentagem mínima para conclusão</label>
+                        <div class="input-group" style="max-width: 220px;">
+                            <input
+                                type="number"
+                                class="form-control"
+                                id="ldvt_completion_threshold"
+                                name="<?php echo esc_attr( LDVT_SETTINGS_OPTION ); ?>[completion_threshold]"
+                                value="<?php echo esc_attr( $settings['completion_threshold'] ); ?>"
+                                min="1"
+                                max="100"
+                                step="0.1"
+                            >
+                            <span class="input-group-text">%</span>
+                        </div>
+                        <small class="text-muted d-block mt-2">
+                            Exemplo: use <strong>70</strong> para concluir ao atingir 70% do vídeo assistido.
+                        </small>
+                    </div>
+
+                    <?php submit_button( 'Salvar Ajustes' ); ?>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const toggle = document.getElementById('ldvt_auto_complete_enabled');
+        const threshold = document.getElementById('ldvt_completion_threshold');
+        const thresholdGroup = threshold ? threshold.closest('.input-group') : null;
+
+        if (!toggle || !threshold) return;
+
+        const syncState = () => {
+            if (thresholdGroup) {
+                thresholdGroup.style.opacity = toggle.checked ? '1' : '0.65';
+            }
+        };
+
+        toggle.addEventListener('change', syncState);
+        syncState();
+    });
+    </script>
+
+    <style>
+        #wpbody-content .wrap {
+            max-width: 100% !important;
+            width: 100% !important;
+            background: #fff;
+            padding: 20px;
+            margin: 20px 20px 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        #wpbody-content {
+            padding-right: 20px;
+        }
+        .card {
+            max-width: 900px;
+        }
+    </style>
+    <?php
+}
+
+/**
  * Renderiza a página de Progresso por Curso
  */
 function ldvt_admin_page_progresso_curso() {
@@ -727,7 +946,7 @@ function ldvt_admin_page_progresso_curso() {
     if ( ! function_exists( 'learndash_get_course_id' ) ) {
         ?>
         <div class="wrap">
-            <h1>Progresso por Curso</h1>
+            <?php ldvt_render_admin_header( 'learndash-vimeo-tracker-curso', 'dashicons-chart-bar', 'Progresso por Curso', 'Visualize o progresso detalhado de vídeos por aluno e curso.' ); ?>
             <div class="alert alert-warning">
                 <strong>LearnDash não detectado!</strong> Este recurso requer o plugin LearnDash ativo.
             </div>
@@ -770,13 +989,8 @@ function ldvt_admin_page_progresso_curso() {
     
     ?>
     <div class="wrap">
-        <h1>
-            <span class="dashicons dashicons-chart-bar" style="font-size: 30px; margin-right: 10px;"></span>
-            Progresso por Curso
-        </h1>
-        <p>Visualize o progresso detalhado de vídeos por aluno e curso.</p>
-        
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+        <?php ldvt_render_admin_header( 'learndash-vimeo-tracker-curso', 'dashicons-chart-bar', 'Progresso por Curso', 'Visualize o progresso detalhado de vídeos por aluno e curso.' ); ?>
         
         <!-- Filtros -->
         <div class="card mb-4">
