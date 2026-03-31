@@ -191,6 +191,49 @@ function ldvt_maybe_mark_step_complete($user_id, $course_id, $step_id, $tempo, $
     return (bool) learndash_process_mark_complete($user_id, $step_id, false, $course_id, false);
 }
 
+/**
+ * Verifica no LearnDash se uma etapa já está concluída para um usuário.
+ *
+ * @param int $user_id   ID do usuário.
+ * @param int $course_id ID do curso.
+ * @param int $step_id   ID da aula/tópico.
+ *
+ * @return bool
+ */
+function ldvt_is_step_completed_in_learndash($user_id, $course_id, $step_id)
+{
+    static $completion_cache = array();
+
+    $user_id = (int) $user_id;
+    $course_id = (int) $course_id;
+    $step_id = (int) $step_id;
+
+    if (!$user_id || !$step_id || !function_exists('learndash_user_progress_is_step_complete')) {
+        return false;
+    }
+
+    if (!$course_id && function_exists('learndash_get_course_id')) {
+        $course_id = (int) learndash_get_course_id($step_id);
+    }
+
+    if (!$course_id) {
+        return false;
+    }
+
+    $step_type = get_post_type($step_id);
+    if (!in_array($step_type, array('sfwd-lessons', 'sfwd-topic'), true)) {
+        return false;
+    }
+
+    $cache_key = $user_id . ':' . $course_id . ':' . $step_id;
+
+    if (!array_key_exists($cache_key, $completion_cache)) {
+        $completion_cache[$cache_key] = (bool) learndash_user_progress_is_step_complete($user_id, $course_id, $step_id);
+    }
+
+    return $completion_cache[$cache_key];
+}
+
 // === HOOKS DE ATIVAÇÃO E DESATIVAÇÃO ===
 
 register_activation_hook(__FILE__, 'ldvt_plugin_activate');
@@ -693,6 +736,7 @@ function ldvt_admin_page()
                                     <th>Tempo Assistido</th>
                                     <th>Duração Total</th>
                                     <th>Progresso</th>
+                                    <th>Conclusão</th>
                                     <th>Data Registro</th>
                                 </tr>
                             </thead>
@@ -702,6 +746,7 @@ function ldvt_admin_page()
                                     $curso_nome = $row->curso_id ? get_the_title($row->curso_id) : 'N/A';
                                     $aula_nome = $row->aula_id ? get_the_title($row->aula_id) : 'N/A';
                                     $progresso = $row->duracao_total > 0 ? round(($row->tempo / $row->duracao_total) * 100, 1) : 0;
+                                    $etapa_concluida = ldvt_is_step_completed_in_learndash($row->user_id, $row->curso_id, $row->aula_id);
 
                                     // Formata tempo em horas:minutos:segundos
                                     $tempo_formatado = gmdate('H:i:s', $row->tempo);
@@ -765,6 +810,16 @@ function ldvt_admin_page()
                                                     <?php echo $progresso; ?>%
                                                 </div>
                                             </div>
+                                        </td>
+                                        <td class="text-center align-middle">
+                                            <?php if ($etapa_concluida): ?>
+                                                <span class="dashicons dashicons-yes-alt text-success"
+                                                    title="Concluída no LearnDash"
+                                                    aria-label="Concluída no LearnDash"
+                                                    style="font-size: 22px; width: 22px; height: 22px;"></span>
+                                            <?php else: ?>
+                                                <span class="text-muted">-</span>
+                                            <?php endif; ?>
                                         </td>
                                         <td><?php echo esc_html(date_i18n('d/m/Y H:i', strtotime($row->data_registro))); ?>
                                         </td>
