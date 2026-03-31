@@ -33,6 +33,7 @@ define( 'LDVT_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
  * @return float
  */
 function ldvt_get_completion_threshold() {
+    // Altere o valor 70 abaixo para definir a porcentagem mínima de conclusão automática no LearnDash.
     $threshold = apply_filters( 'ldvt_completion_threshold', 70 );
 
     if ( ! is_numeric( $threshold ) ) {
