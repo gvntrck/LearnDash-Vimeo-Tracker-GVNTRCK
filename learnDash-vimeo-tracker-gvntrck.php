@@ -18,20 +18,27 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-require 'plugin-update-checker/plugin-update-checker.php';
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 
-$myUpdateChecker = PucFactory::buildUpdateChecker(
-    'https://github.com/gvntrck/LearnDash-Vimeo-Tracker-GVNTRCK',
-    __FILE__,
-    'LearnDash-Vimeo-Tracker-GVNTRCK'
-);
+$ldvt_update_checker_file = __DIR__ . '/plugin-update-checker/plugin-update-checker.php';
 
-//Set the branch that contains the stable release.
-$myUpdateChecker->setBranch('main');
+if (file_exists($ldvt_update_checker_file)) {
+    require_once $ldvt_update_checker_file;
 
-//Optional: If you're using a private repository, specify the access token like this:
-$myUpdateChecker->setAuthentication('your-token-here');
+    if (class_exists(PucFactory::class)) {
+        $myUpdateChecker = PucFactory::buildUpdateChecker(
+            'https://github.com/gvntrck/LearnDash-Vimeo-Tracker-GVNTRCK',
+            __FILE__,
+            'LearnDash-Vimeo-Tracker-GVNTRCK'
+        );
+
+        // Set the branch that contains the stable release.
+        $myUpdateChecker->setBranch('main');
+
+        // Optional: If you're using a private repository, specify the access token like this:
+        $myUpdateChecker->setAuthentication('your-token-here');
+    }
+}
 
 
 
