@@ -32,6 +32,9 @@ function ldvt_vimeo_tracking_script()
                 if (!iframe) return;
 
                 const player = new Vimeo.Player(iframe);
+                const videoId = iframe.src.includes('/video/')
+                    ? iframe.src.split('/video/')[1].split('?')[0]
+                    : '';
                 let watchedIntervals = [];
                 let lastTime = 0;
                 let lastSent = 0;
@@ -74,6 +77,15 @@ function ldvt_vimeo_tracking_script()
                     0
                 );
 
+                const buildRequestBody = watchedTime => new URLSearchParams({
+                    action: 'ldvt_salvar_tempo_video',
+                    video_id: videoId,
+                    tempo: watchedTime,
+                    curso_id: CURSO_ID,
+                    aula_id: AULA_ID,
+                    duracao_total: videoDuration,
+                }).toString();
+
                 player.on('timeupdate', ({ seconds }) => {
                     if (seconds > lastTime && seconds - lastTime < 2) {
                         addWatchedInterval(lastTime, seconds);
@@ -82,10 +94,28 @@ function ldvt_vimeo_tracking_script()
                     lastTime = seconds;
                 });
 
-                const sendTime = () => {
+                const sendTime = ({ useBeacon = false } = {}) => {
                     const watchedTime = Math.round(getTotalWatchedTime());
 
-                    if (watchedTime <= lastSent || sending) {
+                    if (!videoId || watchedTime <= lastSent) {
+                        return;
+                    }
+
+                    if (useBeacon && navigator.sendBeacon) {
+                        const queued = navigator.sendBeacon(
+                            AJAX_URL,
+                            new Blob([buildRequestBody(watchedTime)], {
+                                type: 'application/x-www-form-urlencoded; charset=UTF-8',
+                            })
+                        );
+
+                        if (queued) {
+                            lastSent = watchedTime;
+                            return;
+                        }
+                    }
+
+                    if (sending) {
                         return;
                     }
 
@@ -93,24 +123,37 @@ function ldvt_vimeo_tracking_script()
 
                     fetch(AJAX_URL, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: new URLSearchParams({
-                            action: 'ldvt_salvar_tempo_video',
-                            video_id: iframe.src.split('/video/')[1].split('?')[0],
-                            tempo: watchedTime,
-                            curso_id: CURSO_ID,
-                            aula_id: AULA_ID,
-                            duracao_total: videoDuration,
-                        }),
-                    }).finally(() => {
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                        body: buildRequestBody(watchedTime),
+                        keepalive: useBeacon,
+                        credentials: 'same-origin',
+                    }).then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}`);
+                        }
+
                         lastSent = watchedTime;
+                    }).catch(error => {
+                        console.error('Erro ao salvar tempo do vídeo:', error);
+                    }).finally(() => {
                         sending = false;
                     });
                 };
 
                 setInterval(sendTime, 180000);
                 player.on('ended', sendTime);
-                window.addEventListener('beforeunload', sendTime);
+                player.on('pause', sendTime);
+                document.addEventListener('visibilitychange', () => {
+                    if (document.visibilityState === 'hidden') {
+                        sendTime({ useBeacon: true });
+                    }
+                });
+                window.addEventListener('pagehide', () => {
+                    sendTime({ useBeacon: true });
+                });
+                window.addEventListener('beforeunload', () => {
+                    sendTime({ useBeacon: true });
+                });
             });
         })();
     </script>
