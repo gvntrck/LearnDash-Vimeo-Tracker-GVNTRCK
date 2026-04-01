@@ -18,22 +18,46 @@ function ldvt_admin_page()
     $items_per_page = 50;
     $current_page = isset($_GET['paged']) ? max(1, (int) $_GET['paged']) : 1;
     $offset = ($current_page - 1) * $items_per_page;
-    $filter_email = isset($_GET['filtro_email']) ? sanitize_email($_GET['filtro_email']) : '';
-    $where_clause = '';
+    $filter_email = isset($_GET['filtro_email']) ? sanitize_email(wp_unslash($_GET['filtro_email'])) : '';
+    $filter_aula = isset($_GET['filtro_aula']) ? absint($_GET['filtro_aula']) : 0;
+    $filter_lesson_name = $filter_aula ? get_the_title($filter_aula) : '';
+    $filter_lesson_name = !empty($filter_lesson_name) ? $filter_lesson_name : ($filter_aula ? 'Aula #' . $filter_aula : '');
+    $where_conditions = array();
     $params = array();
+    $base_page_args = array(
+        'page' => 'learndash-vimeo-tracker',
+    );
 
     if (!empty($filter_email)) {
         $user = get_user_by('email', $filter_email);
         if ($user) {
-            $where_clause = ' WHERE user_id = %d';
+            $where_conditions[] = 'user_id = %d';
             $params[] = $user->ID;
+        } else {
+            $where_conditions[] = '1 = 0';
         }
     }
 
+    if (!empty($filter_aula)) {
+        $where_conditions[] = 'aula_id = %d';
+        $params[] = $filter_aula;
+    }
+
+    $where_clause = !empty($where_conditions) ? ' WHERE ' . implode(' AND ', $where_conditions) : '';
+
+    if (!empty($filter_email)) {
+        $base_page_args['filtro_email'] = $filter_email;
+    }
+
+    if (!empty($filter_aula)) {
+        $base_page_args['filtro_aula'] = $filter_aula;
+    }
+
+    $count_query = "SELECT COUNT(*) FROM $table" . $where_clause;
     $total_records = $wpdb->get_var(
-        empty($params)
-            ? "SELECT COUNT(*) FROM $table"
-            : $wpdb->prepare("SELECT COUNT(*) FROM $table" . $where_clause, $params)
+        !empty($params)
+            ? $wpdb->prepare($count_query, $params)
+            : $count_query
     );
 
     $total_pages = (int) ceil($total_records / $items_per_page);
@@ -55,14 +79,22 @@ function ldvt_admin_page()
                         <input type="email" class="form-control" id="filtro_email" name="filtro_email"
                             value="<?php echo esc_attr($filter_email); ?>" placeholder="exemplo@email.com">
                     </div>
+                    <div class="col-md-4">
+                        <label for="filtro_aula_nome" class="form-label fw-bold">Filtrar por Aula:</label>
+                        <input type="hidden" name="filtro_aula" value="<?php echo esc_attr($filter_aula); ?>">
+                        <input type="text" class="form-control" id="filtro_aula_nome"
+                            value="<?php echo esc_attr($filter_lesson_name); ?>"
+                            placeholder="Clique na lupa ao lado da aula" readonly>
+                    </div>
                     <div class="col-md-2">
                         <button type="submit" class="btn btn-primary w-100">
                             <span class="dashicons dashicons-search" style="margin-top: 3px;"></span> Filtrar
                         </button>
                     </div>
-                    <?php if (!empty($filter_email)): ?>
+                    <?php if (!empty($filter_email) || !empty($filter_aula)): ?>
                         <div class="col-md-2">
-                            <a href="?page=learndash-vimeo-tracker" class="btn btn-secondary w-100">
+                            <a href="<?php echo esc_url(add_query_arg(array('page' => 'learndash-vimeo-tracker'), admin_url('admin.php'))); ?>"
+                                class="btn btn-secondary w-100">
                                 <span class="dashicons dashicons-dismiss" style="margin-top: 3px;"></span> Limpar
                             </a>
                         </div>
@@ -74,7 +106,7 @@ function ldvt_admin_page()
         <?php if (empty($results)): ?>
             <div class="alert alert-info">
                 <strong>Nenhum registro encontrado.</strong>
-                <?php echo !empty($filter_email) ? 'Tente outro email ou limpe o filtro.' : 'Os dados aparecerão aqui quando os alunos começarem a assistir os vídeos.'; ?>
+                <?php echo (!empty($filter_email) || !empty($filter_aula)) ? 'Tente outros filtros ou limpe a busca.' : 'Os dados aparecerão aqui quando os alunos começarem a assistir os vídeos.'; ?>
             </div>
         <?php else: ?>
             <div class="mt-4">
@@ -152,7 +184,17 @@ function ldvt_admin_page()
                                             }
                                             ?>
                                         </td>
-                                        <td><?php echo esc_html($lesson_name); ?></td>
+                                        <td>
+                                            <strong><?php echo esc_html($lesson_name); ?></strong>
+                                            <?php if (!empty($row->aula_id)): ?>
+                                                <a href="<?php echo esc_url(add_query_arg(array('page' => 'learndash-vimeo-tracker', 'filtro_aula' => (int) $row->aula_id), admin_url('admin.php'))); ?>"
+                                                    title="Filtrar por <?php echo esc_attr($lesson_name); ?>"
+                                                    class="text-decoration-none ms-2">
+                                                    <span class="dashicons dashicons-search"
+                                                        style="font-size: 18px; width: 18px; height: 18px; vertical-align: middle; color: #555;"></span>
+                                                </a>
+                                            <?php endif; ?>
+                                        </td>
                                         <td>
                                             <span class="badge bg-info"><?php echo esc_html($time_formatted); ?></span>
                                         </td>
@@ -194,13 +236,13 @@ function ldvt_admin_page()
                             <?php if ($current_page > 1): ?>
                                 <li class="page-item">
                                     <a class="page-link"
-                                        href="?page=learndash-vimeo-tracker&paged=1<?php echo !empty($filter_email) ? '&filtro_email=' . urlencode($filter_email) : ''; ?>">
+                                        href="<?php echo esc_url(add_query_arg(array_merge($base_page_args, array('paged' => 1)), admin_url('admin.php'))); ?>">
                                         &laquo; Primeira
                                     </a>
                                 </li>
                                 <li class="page-item">
                                     <a class="page-link"
-                                        href="?page=learndash-vimeo-tracker&paged=<?php echo $current_page - 1; ?><?php echo !empty($filter_email) ? '&filtro_email=' . urlencode($filter_email) : ''; ?>">
+                                        href="<?php echo esc_url(add_query_arg(array_merge($base_page_args, array('paged' => $current_page - 1)), admin_url('admin.php'))); ?>">
                                         &lsaquo; Anterior
                                     </a>
                                 </li>
@@ -214,7 +256,7 @@ function ldvt_admin_page()
                                 ?>
                                 <li class="page-item <?php echo $page === $current_page ? 'active' : ''; ?>">
                                     <a class="page-link"
-                                        href="?page=learndash-vimeo-tracker&paged=<?php echo $page; ?><?php echo !empty($filter_email) ? '&filtro_email=' . urlencode($filter_email) : ''; ?>">
+                                        href="<?php echo esc_url(add_query_arg(array_merge($base_page_args, array('paged' => $page)), admin_url('admin.php'))); ?>">
                                         <?php echo $page; ?>
                                     </a>
                                 </li>
@@ -223,13 +265,13 @@ function ldvt_admin_page()
                             <?php if ($current_page < $total_pages): ?>
                                 <li class="page-item">
                                     <a class="page-link"
-                                        href="?page=learndash-vimeo-tracker&paged=<?php echo $current_page + 1; ?><?php echo !empty($filter_email) ? '&filtro_email=' . urlencode($filter_email) : ''; ?>">
+                                        href="<?php echo esc_url(add_query_arg(array_merge($base_page_args, array('paged' => $current_page + 1)), admin_url('admin.php'))); ?>">
                                         Próxima &rsaquo;
                                     </a>
                                 </li>
                                 <li class="page-item">
                                     <a class="page-link"
-                                        href="?page=learndash-vimeo-tracker&paged=<?php echo $total_pages; ?><?php echo !empty($filter_email) ? '&filtro_email=' . urlencode($filter_email) : ''; ?>">
+                                        href="<?php echo esc_url(add_query_arg(array_merge($base_page_args, array('paged' => $total_pages)), admin_url('admin.php'))); ?>">
                                         Última &raquo;
                                     </a>
                                 </li>
