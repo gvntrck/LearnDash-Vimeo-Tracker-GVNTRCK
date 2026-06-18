@@ -84,6 +84,18 @@ function ldvt_get_tempo_assistido_shortcode_styles()
             color: #64748b;
             font-size: 13px;
         }
+        .ldvt-watch-progress__help {
+            flex-basis: 100%;
+            color: #64748b;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .ldvt-watch-progress__help a {
+            color: #2563eb;
+            font-weight: 600;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
         .ldvt-watch-progress.is-saving {
             border-color: #f59e0b;
             background: #fffbeb;
@@ -153,5 +165,6 @@ function ldvt_tempo_assistido_shortcode($atts)
         . '<span class="ldvt-watch-progress__label">Tempo registrado</span>'
         . '<strong class="ldvt-watch-progress__time">' . esc_html($saved_time_formatted) . '</strong>'
         . '<span class="ldvt-watch-progress__meta">' . esc_html($meta) . '</span>'
+        . '<span class="ldvt-watch-progress__help">O tempo é salvo automaticamente a cada 1,5 minuto de aula assistida. Se tiver algum problema com o registro de tempo ou dúvida, entre em contato pela página <a href="' . esc_url(home_url('/suporte/')) . '">Suporte</a>.</span>'
         . '</div>';
 }
