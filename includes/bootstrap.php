@@ -9,6 +9,7 @@ require_once __DIR__ . '/settings.php';
 require_once __DIR__ . '/completion.php';
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/lifecycle.php';
+require_once __DIR__ . '/frontend/shortcode.php';
 require_once __DIR__ . '/frontend/tracking.php';
 require_once __DIR__ . '/ajax.php';
 require_once __DIR__ . '/admin/shared.php';

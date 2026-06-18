@@ -5,6 +5,7 @@ if (!defined('ABSPATH')) {
 }
 
 add_action('wp_ajax_ldvt_get_user_courses', 'ldvt_get_user_courses_callback');
+add_action('wp_ajax_ldvt_get_tempo_video', 'ldvt_get_tempo_video_callback');
 add_action('wp_ajax_ldvt_salvar_tempo_video', 'ldvt_salvar_tempo_video_callback');
 
 /**
@@ -60,6 +61,33 @@ function ldvt_get_user_courses_callback()
 }
 
 /**
+ * Callback AJAX para buscar o tempo ja salvo de um video.
+ *
+ * @return void
+ */
+function ldvt_get_tempo_video_callback()
+{
+    $user_id = get_current_user_id();
+    $video_id = sanitize_text_field($_POST['video_id'] ?? '');
+
+    if (!$user_id || !$video_id) {
+        wp_send_json_error('Dados inválidos.');
+    }
+
+    $record = ldvt_get_tempo_video_record($user_id, $video_id);
+    $saved_time = $record ? (int) $record->tempo : 0;
+    $saved_at = $record ? $record->data_registro : '';
+
+    wp_send_json_success(array(
+        'tempo' => $saved_time,
+        'tempo_formatado' => ldvt_format_seconds($saved_time),
+        'data_registro' => $saved_at,
+        'data_registro_formatada' => $saved_at ? date_i18n('d/m/Y H:i', strtotime($saved_at)) : '',
+        'has_record' => (bool) $record,
+    ));
+}
+
+/**
  * Callback AJAX para salvar o tempo assistido no banco de dados.
  *
  * @return void
@@ -105,6 +133,16 @@ function ldvt_salvar_tempo_video_callback()
     );
 
     $step_completed = ldvt_maybe_mark_step_complete($user_id, $curso_id, $aula_id, $tempo, $duracao_total);
+    $record = ldvt_get_tempo_video_record($user_id, $video_id);
+    $saved_time = $record ? (int) $record->tempo : $tempo;
+    $saved_at = $record ? $record->data_registro : $now;
 
-    wp_send_json_success($step_completed ? 'Tempo salvo e etapa concluída no LearnDash.' : 'Tempo salvo.');
+    wp_send_json_success(array(
+        'message' => $step_completed ? 'Tempo salvo e etapa concluída no LearnDash.' : 'Tempo salvo.',
+        'tempo' => $saved_time,
+        'tempo_formatado' => ldvt_format_seconds($saved_time),
+        'data_registro' => $saved_at,
+        'data_registro_formatada' => date_i18n('d/m/Y H:i', strtotime($saved_at)),
+        'step_completed' => $step_completed,
+    ));
 }

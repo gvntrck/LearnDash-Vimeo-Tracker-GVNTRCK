@@ -17,6 +17,54 @@ function ldvt_get_tempo_video_table_name()
 }
 
 /**
+ * Verifica se a tabela de rastreamento existe.
+ *
+ * @return bool
+ */
+function ldvt_tempo_video_table_exists()
+{
+    global $wpdb;
+
+    $table = ldvt_get_tempo_video_table_name();
+    $table_like = $wpdb->esc_like($table);
+
+    return $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table_like)) === $table;
+}
+
+/**
+ * Retorna o registro de progresso de um usuario para um video.
+ *
+ * @param int    $user_id  ID do usuario.
+ * @param string $video_id ID do video no Vimeo.
+ *
+ * @return object|null
+ */
+function ldvt_get_tempo_video_record($user_id, $video_id)
+{
+    global $wpdb;
+
+    $user_id = (int) $user_id;
+    $video_id = sanitize_text_field($video_id);
+
+    if (!$user_id || !$video_id || !ldvt_tempo_video_table_exists()) {
+        return null;
+    }
+
+    $table = ldvt_get_tempo_video_table_name();
+
+    return $wpdb->get_row(
+        $wpdb->prepare(
+            "SELECT tempo, curso_id, aula_id, duracao_total, data_registro
+             FROM $table
+             WHERE user_id = %d AND video_id = %s
+             LIMIT 1",
+            $user_id,
+            $video_id
+        )
+    );
+}
+
+/**
  * Cria a tabela de rastreamento de tempo de vídeo se não existir.
  *
  * @return void
