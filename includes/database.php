@@ -32,6 +32,29 @@ function ldvt_tempo_video_table_exists()
 }
 
 /**
+ * Verifica se a tabela ja possui a coluna de intervalos assistidos.
+ *
+ * @return bool
+ */
+function ldvt_tempo_video_has_watched_intervals_column()
+{
+    global $wpdb;
+
+    if (!ldvt_tempo_video_table_exists()) {
+        return false;
+    }
+
+    $table = ldvt_get_tempo_video_table_name();
+
+    return (bool) $wpdb->get_var(
+        $wpdb->prepare(
+            "SHOW COLUMNS FROM $table LIKE %s",
+            'watched_intervals'
+        )
+    );
+}
+
+/**
  * Retorna o registro de progresso de um usuario para um video.
  *
  * @param int    $user_id  ID do usuario.
@@ -51,10 +74,13 @@ function ldvt_get_tempo_video_record($user_id, $video_id)
     }
 
     $table = ldvt_get_tempo_video_table_name();
+    $watched_intervals_select = ldvt_tempo_video_has_watched_intervals_column()
+        ? 'watched_intervals'
+        : "'' AS watched_intervals";
 
     return $wpdb->get_row(
         $wpdb->prepare(
-            "SELECT tempo, curso_id, aula_id, duracao_total, data_registro
+            "SELECT tempo, curso_id, aula_id, duracao_total, $watched_intervals_select, data_registro
              FROM $table
              WHERE user_id = %d AND video_id = %s
              LIMIT 1",
@@ -83,6 +109,7 @@ function ldvt_criar_tabela_tempo_video()
         curso_id      BIGINT DEFAULT 0,
         aula_id       BIGINT DEFAULT 0,
         duracao_total INT DEFAULT 0,
+        watched_intervals LONGTEXT NULL,
         data_registro DATETIME         NOT NULL,
         UNIQUE KEY unique_video_user ( user_id, video_id )
     ) $charset_collate;";

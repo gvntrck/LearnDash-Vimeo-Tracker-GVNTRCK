@@ -102,6 +102,7 @@ function ldvt_salvar_tempo_video_callback()
     $curso_id = (int) ($_POST['curso_id'] ?? 0);
     $aula_id = (int) ($_POST['aula_id'] ?? 0);
     $duracao_total = (int) ($_POST['duracao_total'] ?? 0);
+    $watched_intervals_raw = isset($_POST['watched_intervals']) ? wp_unslash($_POST['watched_intervals']) : '';
 
     if (!$user_id || !$video_id || !$tempo) {
         wp_send_json_error('Dados inválidos.');
@@ -111,28 +112,44 @@ function ldvt_salvar_tempo_video_callback()
 
     $table = ldvt_get_tempo_video_table_name();
     $now = current_time('mysql');
+    $existing_record = ldvt_get_tempo_video_record($user_id, $video_id);
+    $existing_intervals = ldvt_get_watched_intervals_from_record($existing_record);
+    $new_intervals = ldvt_parse_watched_intervals_json($watched_intervals_raw, $duracao_total);
+
+    if (empty($new_intervals)) {
+        $new_intervals = ldvt_get_legacy_watched_interval($tempo, $duracao_total);
+    }
+
+    $watched_intervals = ldvt_normalize_watched_intervals(
+        array_merge($existing_intervals, $new_intervals),
+        $duracao_total
+    );
+    $saved_time = ldvt_calculate_watched_time_from_intervals($watched_intervals);
+    $watched_intervals_json = wp_json_encode($watched_intervals);
 
     $wpdb->query(
         $wpdb->prepare(
-            "INSERT INTO $table (user_id, video_id, tempo, curso_id, aula_id, duracao_total, data_registro)
-             VALUES (%d, %s, %d, %d, %d, %d, %s)
+            "INSERT INTO $table (user_id, video_id, tempo, curso_id, aula_id, duracao_total, watched_intervals, data_registro)
+             VALUES (%d, %s, %d, %d, %d, %d, %s, %s)
              ON DUPLICATE KEY UPDATE
-                 tempo         = GREATEST( tempo, VALUES( tempo ) ),
-                 curso_id      = VALUES( curso_id ),
-                 aula_id       = VALUES( aula_id ),
-                 duracao_total = VALUES( duracao_total ),
-                 data_registro = VALUES( data_registro )",
+                 tempo             = VALUES( tempo ),
+                 curso_id          = VALUES( curso_id ),
+                 aula_id           = VALUES( aula_id ),
+                 duracao_total     = VALUES( duracao_total ),
+                 watched_intervals = VALUES( watched_intervals ),
+                 data_registro     = VALUES( data_registro )",
             $user_id,
             $video_id,
-            $tempo,
+            $saved_time,
             $curso_id,
             $aula_id,
             $duracao_total,
+            $watched_intervals_json,
             $now
         )
     );
 
-    $step_completed = ldvt_maybe_mark_step_complete($user_id, $curso_id, $aula_id, $tempo, $duracao_total);
+    $step_completed = ldvt_maybe_mark_step_complete($user_id, $curso_id, $aula_id, $saved_time, $duracao_total);
     $record = ldvt_get_tempo_video_record($user_id, $video_id);
     $saved_time = $record ? (int) $record->tempo : $tempo;
     $saved_at = $record ? $record->data_registro : $now;

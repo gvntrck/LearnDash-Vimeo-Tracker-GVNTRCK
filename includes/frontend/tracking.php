@@ -91,6 +91,7 @@ function ldvt_vimeo_tracking_script()
                     curso_id: CURSO_ID,
                     aula_id: AULA_ID,
                     duracao_total: videoDuration,
+                    watched_intervals: JSON.stringify(watchedIntervals),
                 }).toString();
 
                 const buildSavedTimeRequestBody = () => new URLSearchParams({
