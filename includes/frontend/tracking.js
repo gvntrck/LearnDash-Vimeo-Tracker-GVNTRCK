@@ -217,7 +217,7 @@
                 const forced = flushAfterSending.delete(key);
                 const current = queues.get(key);
                 if (current && current.intervals.length && !intervalsEqual(current.intervals, snapshot)
-                    && (forced || urgent || !isCurrentQueue(current) || !playbackActive || document.visibilityState === 'hidden')) {
+                    && (forced || urgent || !isCurrentQueue(current) || !playbackActive)) {
                     flushQueue(key);
                 }
             });

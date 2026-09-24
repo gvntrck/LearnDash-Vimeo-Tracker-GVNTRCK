@@ -47,6 +47,7 @@ function createHarness(saveHandler, {
     storageDenied = false,
     sessionStorageDenied = false,
     showIndicator = true,
+    visibilityState = 'visible',
     iframeSources = null,
     queued = null,
 } = {}) {
@@ -99,7 +100,7 @@ function createHarness(saveHandler, {
         },
         Vimeo: null,
         document: {
-            visibilityState: 'visible',
+            visibilityState,
             addEventListener: (name, callback) => { documentEvents[name] = callback; },
             querySelector: selector => iframeCandidates.find(frame => (
                 selector.includes('vimeo.com/video/')
@@ -242,6 +243,39 @@ async function testPeriodicSaveWithoutPerSecondResendOrBlink() {
     await tick();
     assert(harness.classes.has('is-saved'), 'periodic ACK updates shortcode indicator');
     assert.strictEqual(harness.stored.values.size, 0, 'all acknowledged progress is removed from pending queue');
+}
+
+async function testHiddenLessonDoesNotSaveEverySecond() {
+    const first = deferred();
+    const second = deferred();
+    const requests = [];
+    const harness = createHarness(request => {
+        requests.push(request);
+        return requests.length === 1 ? first.promise : requests.length === 2 ? second.promise
+            : Promise.resolve({ ok: true, json: async () => ({ success: true, data: { tempo: 3 } }) });
+    }, { visibilityState: 'hidden' });
+    harness.playerEvents.play({ seconds: 0 });
+    harness.clock.value = 1000;
+    harness.playerEvents.timeupdate({ seconds: 1 });
+    harness.documentEvents.visibilitychange();
+    assert.strictEqual(requests.length, 1, 'hiding the lesson saves pending playback immediately');
+    harness.clock.value = 2000;
+    harness.playerEvents.timeupdate({ seconds: 2 });
+    first.resolve({ ok: true, json: async () => ({ success: true, data: { tempo: 1 } }) });
+    await tick();
+    await tick();
+    assert.strictEqual(requests.length, 2, 'one new batch may be sent after the hide-triggered request');
+    harness.clock.value = 3000;
+    harness.playerEvents.timeupdate({ seconds: 3 });
+    second.resolve({ ok: true, json: async () => ({ success: true, data: { tempo: 2 } }) });
+    await tick();
+    await tick();
+    assert.strictEqual(requests.length, 2, 'hidden playback waits for timer rather than writing to database every second');
+    harness.intervals[0].callback();
+    await tick();
+    await tick();
+    assert.strictEqual(requests.length, 3, 'periodic save still works while lesson is hidden');
+    assert.strictEqual(harness.stored.values.size, 0);
 }
 
 async function testPauseDuringPeriodicRequestFlushesAfterAck() {
@@ -402,6 +436,7 @@ function testTwoTimesPlaybackAndSeekGap() {
     await testMemoryQueueWhenStorageDenied();
     await testClosedTabQueuesAcrossLessonsAndVideos();
     await testPeriodicSaveWithoutPerSecondResendOrBlink();
+    await testHiddenLessonDoesNotSaveEverySecond();
     await testPauseDuringPeriodicRequestFlushesAfterAck();
     await testResumeAfterAcknowledgedPause();
     await testChangesDuringRequestAndReloadReplay();
