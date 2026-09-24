@@ -246,10 +246,12 @@ async function testPeriodicSaveWithoutPerSecondResendOrBlink() {
 
 async function testPauseDuringPeriodicRequestFlushesAfterAck() {
     const first = deferred();
+    const second = deferred();
     const requests = [];
     const harness = createHarness(request => {
         requests.push(request);
-        return requests.length === 1 ? first.promise : Promise.resolve({ ok: true, json: async () => ({ success: true, data: { tempo: 2 } }) });
+        return requests.length === 1 ? first.promise : requests.length === 2 ? second.promise
+            : Promise.resolve({ ok: true, json: async () => ({ success: true, data: { tempo: 3 } }) });
     });
     harness.playerEvents.play({ seconds: 0 });
     harness.clock.value = 1000;
@@ -263,8 +265,17 @@ async function testPauseDuringPeriodicRequestFlushesAfterAck() {
     await tick();
     await tick();
     assert.strictEqual(requests.length, 2, 'pause during in-flight periodic save flushes new time after ACK even if playback resumed');
+
+    harness.clock.value = 3000;
+    harness.playerEvents.timeupdate({ seconds: 3 });
+    second.resolve({ ok: true, json: async () => ({ success: true, data: { tempo: 2 } }) });
     await tick();
     await tick();
+    assert.strictEqual(requests.length, 2, 'forced flush does not perpetuate keepalive and resend each second');
+    harness.intervals[0].callback();
+    await tick();
+    await tick();
+    assert.strictEqual(requests.length, 3, 'next 15-second timer sends remaining progress');
     assert.strictEqual(harness.stored.values.size, 0);
 }
 
