@@ -38,6 +38,7 @@ function ldvt_vimeo_tracking_script()
         'blogId' => get_current_blog_id(),
         'userId' => $user_id,
         'lessonId' => $lesson_id,
+        'videoId' => ldvt_get_post_vimeo_video_id($lesson_id),
         'pageStartedAt' => $page_started_at,
         'pageSignature' => ldvt_create_page_start_signature($user_id, $lesson_id, $page_started_at),
     ));

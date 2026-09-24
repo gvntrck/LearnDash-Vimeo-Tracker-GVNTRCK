@@ -42,6 +42,7 @@ function createHarness(saveHandler, {
     tabId = 'tab-1',
     lessonId = 123,
     videoId = '1189714750',
+    configuredVideoId = videoId,
     blogId = 9,
     userId = 7,
     storageDenied = false,
@@ -49,6 +50,10 @@ function createHarness(saveHandler, {
     showIndicator = true,
     visibilityState = 'visible',
     iframeSources = null,
+    readyState = 'loading',
+    autoDOMContentLoaded = true,
+    playerReady = () => Promise.resolve(),
+    vimeoAvailable = true,
     queued = null,
 } = {}) {
     const stored = createStorage(sharedStorage, storageDenied);
@@ -76,12 +81,14 @@ function createHarness(saveHandler, {
     const iframe = videoId ? { src: `https://player.vimeo.com/video/${videoId}?h=test` } : null;
     const iframeCandidates = iframeSources || (iframe ? [iframe] : []);
     const playerFrames = [];
+    const observers = [];
     const config = {
         ajaxUrl: '/wp-admin/admin-ajax.php',
         nonce: 'nonce-current-page',
         blogId,
         userId,
         lessonId,
+        videoId: configuredVideoId,
         pageStartedAt: 100,
         pageSignature: 'signature-current-page',
     };
@@ -93,21 +100,35 @@ function createHarness(saveHandler, {
     const context = {
         window: {
             LDVTTracking: config,
-            Vimeo: { Player: class { constructor(frame) { playerFrames.push(frame.src); } on(name, callback) { playerEvents[name] = callback; } } },
+            Vimeo: { Player: class {
+                constructor(frame) { playerFrames.push(frame.src); this.frame = frame; }
+                on(name, callback) { playerEvents[name] = callback; }
+                off(name, callback) { if (playerEvents[name] === callback) delete playerEvents[name]; }
+                ready() { return playerReady(this.frame); }
+            } },
             crypto: { randomUUID: () => tabId },
             performance: { now: () => clock.value },
             addEventListener: (name, callback) => { windowEvents[name] = callback; },
         },
         Vimeo: null,
+        MutationObserver: class {
+            constructor(callback) { this.callback = callback; observers.push(this); }
+            observe(target, options) { this.target = target; this.options = options; }
+            disconnect() { this.disconnected = true; }
+        },
         document: {
+            readyState,
+            documentElement: {},
             visibilityState,
             addEventListener: (name, callback) => { documentEvents[name] = callback; },
             querySelector: selector => iframeCandidates.find(frame => (
                 selector.includes('vimeo.com/video/')
-                    ? frame.src.includes('vimeo.com/video/')
-                    : frame.src.includes('vimeo.com')
+                    ? (frame.src || '').includes('vimeo.com/video/')
+                    : (frame.src || '').includes('vimeo.com')
             )) || null,
-            querySelectorAll: () => showIndicator ? [indicator] : [],
+            querySelectorAll: selector => selector.includes('iframe')
+                ? iframeCandidates.filter(frame => (frame.src || '').includes('vimeo.com/video/'))
+                : showIndicator ? [indicator] : [],
         },
         localStorage: stored,
         sessionStorage: {
@@ -134,9 +155,10 @@ function createHarness(saveHandler, {
         Date,
     };
     context.Vimeo = context.window.Vimeo;
+    if (!vimeoAvailable) context.window.Vimeo = null;
     vm.runInNewContext(source, context);
-    documentEvents.DOMContentLoaded();
-    return { stored, classes, classChanges, meta, config, intervals, playerEvents, windowEvents, documentEvents, getRequests, playerFrames, clock, currentKey };
+    if (autoDOMContentLoaded && documentEvents.DOMContentLoaded) documentEvents.DOMContentLoaded();
+    return { stored, classes, classChanges, meta, config, intervals, playerEvents, windowEvents, documentEvents, getRequests, playerFrames, iframeCandidates, observers, clock, currentKey, window: context.window, vimeoSdk: context.Vimeo };
 }
 
 async function testFailedRequestAndNonceRetry() {
@@ -361,11 +383,110 @@ async function testChangesDuringRequestAndReloadReplay() {
     assert.strictEqual(harness.stored.values.size, 0, 'final ACK clears only latest snapshot');
 }
 
+async function testLateIframeAndSourceBecomeTracked() {
+    const frames = [];
+    const requests = [];
+    const harness = createHarness(request => {
+        requests.push(request);
+        return Promise.resolve({ ok: true, json: async () => ({ success: true, data: { tempo: 1 } }) });
+    }, { iframeSources: frames });
+    assert(harness.classes.has('is-error'), 'missing player is reported rather than silently ignored');
+    assert.strictEqual(harness.observers.length, 1, 'DOM changes are observed while waiting for the player');
+    const frame = { src: '' };
+    frames.push(frame);
+    harness.observers[0].callback();
+    assert.strictEqual(harness.playerFrames.length, 0, 'iframe with missing src is not bound');
+    frame.src = 'https://player.vimeo.com/video/1189714750?h=test';
+    harness.observers[0].callback();
+    await tick();
+    assert.deepStrictEqual(harness.playerFrames, [frame.src], 'player is attached after src appears');
+    assert(!harness.classes.has('is-error'), 'successful ready clears the tracking warning');
+    harness.playerEvents.play({ seconds: 0 });
+    harness.clock.value = 1000;
+    harness.playerEvents.timeupdate({ seconds: 1 });
+    harness.playerEvents.pause();
+    await tick();
+    await tick();
+    assert.strictEqual(requests.length, 1, 'late player still persists watched time');
+}
+
+async function testLateIframeWithoutServerVideoId() {
+    const frames = [];
+    const harness = createHarness(() => Promise.resolve({ ok: true, json: async () => ({ success: true, data: {} }) }), {
+        iframeSources: frames, configuredVideoId: '',
+    });
+    assert.strictEqual(harness.getRequests.length, 0, 'unknown video cannot be fetched before discovery');
+    frames.push({ src: 'https://player.vimeo.com/video/1189714750?h=test' });
+    harness.observers[0].callback();
+    await tick();
+    assert.strictEqual(harness.getRequests.length, 1, 'newly discovered video revalidates its saved progress');
+    harness.playerEvents.play({ seconds: 0 });
+    harness.clock.value = 1000;
+    harness.playerEvents.timeupdate({ seconds: 1 });
+    assert.strictEqual(JSON.parse(harness.stored.values.get(harness.currentKey)).videoId, '1189714750');
+}
+
+async function testReplacedIframeKeepsProgress() {
+    const frames = [{ src: 'https://player.vimeo.com/video/1189714750?h=test' }];
+    const requests = [];
+    const harness = createHarness(request => {
+        requests.push(request);
+        return Promise.resolve({ ok: true, json: async () => ({ success: true, data: { tempo: requests.length } }) });
+    }, { iframeSources: frames });
+    harness.playerEvents.play({ seconds: 0 });
+    harness.clock.value = 1000;
+    harness.playerEvents.timeupdate({ seconds: 1 });
+    const replacement = { src: frames[0].src };
+    frames.splice(0, 1, replacement);
+    harness.observers[0].callback();
+    await tick();
+    await tick();
+    assert.strictEqual(requests.length, 1, 'replacement flushes the old player pending progress');
+    harness.playerEvents.play({ seconds: 1 });
+    harness.clock.value = 2000;
+    harness.playerEvents.timeupdate({ seconds: 2 });
+    harness.playerEvents.pause();
+    await tick();
+    await tick();
+    assert.deepStrictEqual(harness.playerFrames, [replacement.src, replacement.src]);
+    assert.strictEqual(requests.length, 2, 'replacement player persists new progress without duplicate handlers');
+}
+
+async function testPlayerReadyFailureIsVisible() {
+    const harness = createHarness(() => Promise.resolve({ ok: true, json: async () => ({ success: true, data: {} }) }), {
+        playerReady: () => Promise.reject(new Error('player unavailable')),
+    });
+    await tick();
+    assert(harness.classes.has('is-error'), 'failed ready does not imply tracking is active');
+    assert(harness.meta.textContent.includes('registrado'), 'student sees that progress is not being recorded');
+}
+
+async function testVimeoSdkDelayedAfterPageLoad() {
+    const harness = createHarness(() => Promise.resolve({ ok: true, json: async () => ({ success: true, data: {} }) }), {
+        vimeoAvailable: false,
+    });
+    assert(harness.classes.has('is-error'), 'missing Vimeo SDK never silently disables tracking');
+    harness.window.Vimeo = harness.vimeoSdk;
+    harness.intervals[0].callback();
+    await tick();
+    assert.strictEqual(harness.playerFrames.length, 1, 'existing periodic timer reconnects after Vimeo SDK loads');
+    assert(!harness.classes.has('is-error'));
+}
+
+function testStartsWhenDocumentAlreadyLoaded() {
+    const harness = createHarness(() => Promise.resolve({ ok: true, json: async () => ({ success: true, data: {} }) }), {
+        readyState: 'complete', autoDOMContentLoaded: false,
+    });
+    assert.strictEqual(harness.playerFrames.length, 1, 'script loaded after DOMContentLoaded still binds the player');
+    assert.strictEqual(harness.getRequests.length, 1, 'saved progress is still revalidated');
+}
+
 function testSelectsLessonVideoIframeAfterNonVideoIframe() {
     const videoFrame = { src: 'https://player.vimeo.com/video/1189714750?h=test' };
     const harness = createHarness(() => Promise.resolve({ ok: true, json: async () => ({ success: true, data: {} }) }), {
         iframeSources: [
             { src: 'https://vimeo.com/channels/staffpicks/42' },
+            { src: 'https://player.vimeo.com/video/1189714751?h=other' },
             videoFrame,
         ],
     });
@@ -440,6 +561,12 @@ function testTwoTimesPlaybackAndSeekGap() {
     await testPauseDuringPeriodicRequestFlushesAfterAck();
     await testResumeAfterAcknowledgedPause();
     await testChangesDuringRequestAndReloadReplay();
+    await testLateIframeAndSourceBecomeTracked();
+    await testLateIframeWithoutServerVideoId();
+    await testReplacedIframeKeepsProgress();
+    await testPlayerReadyFailureIsVisible();
+    await testVimeoSdkDelayedAfterPageLoad();
+    testStartsWhenDocumentAlreadyLoaded();
     testSelectsLessonVideoIframeAfterNonVideoIframe();
     testGetRevalidationWithoutIndicator();
     testIdleResumeAndFirstFraction();

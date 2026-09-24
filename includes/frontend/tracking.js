@@ -1,19 +1,20 @@
 (() => {
     const config = window.LDVTTracking || {};
 
-    document.addEventListener('DOMContentLoaded', () => {
+    const initialize = () => {
         if (!config.ajaxUrl) return;
 
-        const iframe = document.querySelector('iframe[src*="vimeo.com/video/"]');
-        const videoMatch = iframe && iframe.src.match(/https?:\/\/(?:player\.)?vimeo\.com\/(?:video\/)?([0-9]+)(?:[/?#"\s]|$)/i);
-        const videoId = videoMatch ? videoMatch[1] : '';
+        let videoId = String(config.videoId || '');
         const lessonId = Number(config.lessonId) || 0;
         const prefix = `ldvt:${config.blogId}:${config.userId}:`;
         const tabId = window.crypto && window.crypto.randomUUID
             ? window.crypto.randomUUID()
             : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
-        const currentKey = videoId ? `${prefix}${lessonId}:${videoId}:${tabId}` : '';
-        const progressIndicators = Array.from(document.querySelectorAll('.ldvt-watch-progress'));
+        let currentKey = videoId ? `${prefix}${lessonId}:${videoId}:${tabId}` : '';
+        const trackingUnavailable = 'Vídeo não conectado; tempo não está sendo registrado';
+        let iframe = null;
+        let player = null;
+        let playerReady = false;
         const queues = new Map();
         const sending = new Set();
         const flushAfterSending = new Set();
@@ -39,10 +40,6 @@
         let playbackActive = false;
         let lastTime = 0;
         let lastClock = clockNow();
-
-        progressIndicators.forEach(indicator => {
-            if (videoId && !indicator.dataset.videoId) indicator.dataset.videoId = videoId;
-        });
 
         function clockNow() {
             return window.performance && typeof window.performance.now === 'function'
@@ -117,9 +114,10 @@
         ));
         const isCurrentQueue = entry => entry.lessonId === lessonId && entry.videoId === videoId;
         const hasPendingCurrentQueue = () => Array.from(queues.values()).some(entry => isCurrentQueue(entry) && entry.intervals.length);
-        const getMatchingIndicators = () => progressIndicators.filter(indicator => (
-            !indicator.dataset.videoId || indicator.dataset.videoId === videoId
-        ));
+        const getMatchingIndicators = () => Array.from(document.querySelectorAll('.ldvt-watch-progress')).filter(indicator => {
+            if (videoId && !indicator.dataset.videoId) indicator.dataset.videoId = videoId;
+            return !videoId || !indicator.dataset.videoId || indicator.dataset.videoId === videoId;
+        });
         const setIndicatorState = (state, metaText = '') => {
             getMatchingIndicators().forEach(indicator => {
                 if (!state || !indicator.classList.contains(`is-${state}`)) {
@@ -138,7 +136,7 @@
                 const time = indicator.querySelector('.ldvt-watch-progress__time');
                 const meta = indicator.querySelector('.ldvt-watch-progress__meta');
                 if (time && data.tempo_formatado) time.textContent = data.tempo_formatado;
-                if (meta && !keepStatus) {
+                if (meta && !keepStatus && playerReady) {
                     if (data.completion_pending) meta.textContent = 'Progresso salvo; conclusão pendente';
                     else if (data.data_registro_formatada) meta.textContent = `Salvo em ${data.data_registro_formatada}`;
                     else if (data.has_record === false) meta.textContent = 'Ainda não salvo';
@@ -200,7 +198,8 @@
                     const otherPending = hasPendingCurrentQueue();
                     updateSavedTimeIndicators(data.data || {}, entry, { keepStatus: otherPending });
                     if (isCurrentQueue(entry)) {
-                        setIndicatorState(otherPending ? 'saving' : 'saved', otherPending ? 'Há progresso pendente' : '');
+                        if (playerReady) setIndicatorState(otherPending ? 'saving' : 'saved', otherPending ? 'Há progresso pendente' : '');
+                        else setIndicatorState('error', trackingUnavailable);
                     }
                     return;
                 }
@@ -233,12 +232,7 @@
             aula_id: lessonId,
         }).toString();
 
-        enumerateQueues();
-        if (currentKey && !queues.has(currentKey)) {
-            queues.set(currentKey, { key: currentKey, lessonId, videoId, intervals: [] });
-        }
-
-        if (videoId) {
+        function revalidateSavedTime() {
             fetch(config.ajaxUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
@@ -254,21 +248,26 @@
             }).catch(error => console.error('Erro ao buscar tempo salvo do vídeo:', error));
         }
 
-        const player = iframe && videoId && window.Vimeo ? new Vimeo.Player(iframe) : null;
-        if (player) {
-            player.on('play', ({ seconds }) => {
+        enumerateQueues();
+        if (currentKey && !queues.has(currentKey)) {
+            queues.set(currentKey, { key: currentKey, lessonId, videoId, intervals: [] });
+        }
+        if (videoId) revalidateSavedTime();
+
+        const playerEvents = {
+            play: ({ seconds }) => {
                 seeking = false;
                 playbackActive = true;
                 setPlaybackBaseline(seconds);
-            });
-            player.on('seeking', () => {
+            },
+            seeking: () => {
                 seeking = true;
-            });
-            player.on('seeked', ({ seconds }) => {
+            },
+            seeked: ({ seconds }) => {
                 seeking = false;
                 setPlaybackBaseline(seconds);
-            });
-            player.on('timeupdate', ({ seconds }) => {
+            },
+            timeupdate: ({ seconds }) => {
                 const now = clockNow();
                 seconds = Number(seconds);
                 if (!Number.isFinite(seconds) || seconds < 0 || seeking) return;
@@ -293,18 +292,80 @@
                 }
                 lastTime = seconds;
                 lastClock = now;
-            });
-            player.on('ended', () => {
+            },
+            ended: () => {
                 playbackActive = false;
                 if (currentKey) flushQueue(currentKey);
-            });
-            player.on('pause', () => {
+            },
+            pause: () => {
                 playbackActive = false;
                 if (currentKey) flushQueue(currentKey);
-            });
+            },
+        };
+
+        function syncPlayer() {
+            const nextIframe = Array.from(document.querySelectorAll('iframe[src*="vimeo.com/video/"]')).find(frame => {
+                const match = frame.src.match(/https?:\/\/(?:player\.)?vimeo\.com\/(?:video\/)?([0-9]+)(?:[/?#"\s]|$)/i);
+                return match && (!videoId || match[1] === videoId);
+            }) || null;
+            if (nextIframe && nextIframe === iframe) return;
+
+            if (player) {
+                Object.entries(playerEvents).forEach(([event, callback]) => player.off(event, callback));
+                player = null;
+                iframe = null;
+                playerReady = false;
+                playbackActive = false;
+                hasBaseline = false;
+                seeking = false;
+                if (currentKey) flushQueue(currentKey);
+            }
+            if (!nextIframe || !window.Vimeo || !window.Vimeo.Player) {
+                setIndicatorState('error', trackingUnavailable);
+                return;
+            }
+
+            if (!videoId) {
+                videoId = nextIframe.src.match(/https?:\/\/(?:player\.)?vimeo\.com\/video\/([0-9]+)/i)[1];
+                currentKey = `${prefix}${lessonId}:${videoId}:${tabId}`;
+                enumerateQueues();
+                if (!queues.has(currentKey)) queues.set(currentKey, { key: currentKey, lessonId, videoId, intervals: [] });
+                revalidateSavedTime();
+                flushPendingQueues();
+            }
+            try {
+                const instance = new Vimeo.Player(nextIframe);
+                iframe = nextIframe;
+                player = instance;
+                lastClock = clockNow();
+                Object.entries(playerEvents).forEach(([event, callback]) => instance.on(event, callback));
+                setIndicatorState('error', 'Conectando ao vídeo; tempo ainda não está sendo registrado');
+                instance.ready().then(() => {
+                    if (player !== instance) return;
+                    playerReady = true;
+                    setIndicatorState(hasPendingCurrentQueue() ? 'saving' : '', hasPendingCurrentQueue()
+                        ? 'Progresso pendente' : 'Rastreamento ativo; aguardando reprodução');
+                }).catch(error => {
+                    if (player !== instance) return;
+                    setIndicatorState('error', trackingUnavailable);
+                    console.error('Erro ao conectar ao vídeo:', error);
+                });
+            } catch (error) {
+                setIndicatorState('error', trackingUnavailable);
+                console.error('Erro ao iniciar o vídeo:', error);
+            }
         }
 
-        setInterval(() => flushPendingQueues(), 15000);
+        if (typeof MutationObserver === 'function') {
+            const observer = new MutationObserver(syncPlayer);
+            observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+        }
+        syncPlayer();
+
+        setInterval(() => {
+            if (!player) syncPlayer();
+            flushPendingQueues();
+        }, 15000);
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'hidden') flushPendingQueues({ keepalive: true });
         });
@@ -312,5 +373,7 @@
         window.addEventListener('pagehide', () => flushPendingQueues({ keepalive: true }));
         window.addEventListener('beforeunload', () => flushPendingQueues({ keepalive: true }));
         flushPendingQueues();
-    });
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize, { once: true });
+    else initialize();
 })();

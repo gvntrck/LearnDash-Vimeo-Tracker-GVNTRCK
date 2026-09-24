@@ -8,7 +8,7 @@ if (!is_dir($test_upgrade_dir)) {
 file_put_contents($test_upgrade_dir . '/upgrade.php', "<?php\n");
 define('ABSPATH', $test_wp_root);
 define('DAY_IN_SECONDS', 86400);
-define('LDVT_VERSION', '1.9.7');
+define('LDVT_VERSION', '1.9.12');
 define('LDVT_PLUGIN_URL', 'https://example.test/plugins/ldvt/');
 define('LDVT_SETTINGS_OPTION', 'ldvt_settings');
 
@@ -300,6 +300,7 @@ expect_true(!ldvt_resolve_video_lesson('1189714751', 125)['valid'], 'non-LearnDa
 ldvt_vimeo_tracking_script();
 $localized_tracking = $GLOBALS['test_localized_scripts']['LDVTTracking'];
 expect_true($localized_tracking['lessonId'] === 123 && get_the_ID() === 125, 'footer signs queried lesson instead of mutable global post');
+expect_true($localized_tracking['videoId'] === '1189714750', 'footer identifies the queried lesson video before lazy iframe appears');
 expect_true($localized_tracking['pageSignature'] === ldvt_create_page_start_signature(7, 123, $localized_tracking['pageStartedAt']), 'page-start signature binds queried lesson');
 $script_count = count($GLOBALS['test_enqueued_scripts']);
 $GLOBALS['test_queried_object_id'] = 125;
