@@ -59,7 +59,7 @@
 
         function recordPlaybackInterval(start, end) {
             if (!(end > start)) return;
-            const entry = queues.get(currentKey);
+            const entry = queues.get(currentKey) || { key: currentKey, lessonId, videoId, intervals: [] };
             entry.intervals = mergeIntervals(entry.intervals.concat({ start, end }));
             queues.set(currentKey, entry);
             persistQueue(entry);

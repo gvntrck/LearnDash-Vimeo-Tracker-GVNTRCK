@@ -205,6 +205,28 @@ async function testClosedTabQueuesAcrossLessonsAndVideos() {
     assert.strictEqual(storage.size, 2, 'ACK removes only acknowledged snapshots from matching site/user queues');
 }
 
+async function testResumeAfterAcknowledgedPause() {
+    const requests = [];
+    const harness = createHarness(request => {
+        requests.push(request);
+        return Promise.resolve({ ok: true, json: async () => ({ success: true, data: { tempo: requests.length } }) });
+    });
+    harness.playerEvents.timeupdate({ seconds: 1 });
+    harness.playerEvents.pause();
+    await tick();
+    await tick();
+    assert.strictEqual(harness.stored.values.size, 0, 'first ACK clears the queue');
+
+    harness.playerEvents.play({ seconds: 1 });
+    harness.clock.value = 500;
+    harness.playerEvents.timeupdate({ seconds: 2 });
+    harness.playerEvents.pause();
+    await tick();
+    await tick();
+    assert.strictEqual(requests.length, 2, 'resume after ACK saves new watched time');
+    assert.strictEqual(requests[1].body.get('watched_intervals'), '[{"start":1,"end":2}]');
+}
+
 async function testChangesDuringRequestAndReloadReplay() {
     const first = deferred();
     const second = deferred();
@@ -305,6 +327,7 @@ function testTwoTimesPlaybackAndSeekGap() {
     await testFailedRequestAndNonceRetry();
     await testMemoryQueueWhenStorageDenied();
     await testClosedTabQueuesAcrossLessonsAndVideos();
+    await testResumeAfterAcknowledgedPause();
     await testChangesDuringRequestAndReloadReplay();
     testSelectsLessonVideoIframeAfterNonVideoIframe();
     testGetRevalidationWithoutIndicator();
