@@ -57,12 +57,16 @@ function createHarness(saveHandler, {
     const getRequests = [];
     const intervals = [];
     const classes = new Set();
+    const classChanges = { savingAdds: 0 };
     const meta = { textContent: '' };
     const time = { textContent: '' };
     const indicator = {
         dataset: {},
         classList: {
-            add: name => classes.add(name),
+            add: name => {
+                if (name === 'is-saving') classChanges.savingAdds++;
+                classes.add(name);
+            },
             remove: (...names) => names.forEach(name => classes.delete(name)),
             contains: name => classes.has(name),
         },
@@ -131,7 +135,7 @@ function createHarness(saveHandler, {
     context.Vimeo = context.window.Vimeo;
     vm.runInNewContext(source, context);
     documentEvents.DOMContentLoaded();
-    return { stored, classes, meta, config, intervals, playerEvents, windowEvents, documentEvents, getRequests, playerFrames, clock, currentKey };
+    return { stored, classes, classChanges, meta, config, intervals, playerEvents, windowEvents, documentEvents, getRequests, playerFrames, clock, currentKey };
 }
 
 async function testFailedRequestAndNonceRetry() {
@@ -203,6 +207,65 @@ async function testClosedTabQueuesAcrossLessonsAndVideos() {
     assert(fields.filter(body => body.get('aula_id') === '123').every(body => body.get('page_signature') === 'signature-current-page'), 'same-lesson replay uses current signed token');
     assert(storage.has('ldvt:8:7:123:1189714750:other-site') && storage.has('ldvt:9:88:123:1189714750:other-user'), 'other sites and accounts remain untouched');
     assert.strictEqual(storage.size, 2, 'ACK removes only acknowledged snapshots from matching site/user queues');
+}
+
+async function testPeriodicSaveWithoutPerSecondResendOrBlink() {
+    const first = deferred();
+    const second = deferred();
+    const requests = [];
+    const harness = createHarness(request => {
+        requests.push(request);
+        return requests.length === 1 ? first.promise : second.promise;
+    });
+    harness.playerEvents.play({ seconds: 0 });
+    harness.clock.value = 1000;
+    harness.playerEvents.timeupdate({ seconds: 1 });
+    harness.clock.value = 2000;
+    harness.playerEvents.timeupdate({ seconds: 2 });
+    assert.strictEqual(requests.length, 0, 'no premature save during playback');
+
+    harness.intervals[0].callback();
+    assert.strictEqual(requests.length, 1, '15-second timer flushes accumulated playback');
+    harness.clock.value = 3000;
+    harness.playerEvents.timeupdate({ seconds: 3 });
+    first.resolve({ ok: true, json: async () => ({ success: true, data: { tempo: 2, tempo_formatado: '00:00:02' } }) });
+    await tick();
+    await tick();
+    assert.strictEqual(requests.length, 1, 'ACK during playback does not trigger immediate repeated saves');
+    assert(harness.classes.has('is-saving'), 'new playback remains pending until next periodic save');
+    assert.strictEqual(harness.classChanges.savingAdds, 1, 'pending indicator does not restart on every timeupdate');
+
+    harness.intervals[0].callback();
+    assert.strictEqual(requests.length, 2, 'next interval sends remaining playback');
+    second.resolve({ ok: true, json: async () => ({ success: true, data: { tempo: 3, tempo_formatado: '00:00:03' } }) });
+    await tick();
+    await tick();
+    assert(harness.classes.has('is-saved'), 'periodic ACK updates shortcode indicator');
+    assert.strictEqual(harness.stored.values.size, 0, 'all acknowledged progress is removed from pending queue');
+}
+
+async function testPauseDuringPeriodicRequestFlushesAfterAck() {
+    const first = deferred();
+    const requests = [];
+    const harness = createHarness(request => {
+        requests.push(request);
+        return requests.length === 1 ? first.promise : Promise.resolve({ ok: true, json: async () => ({ success: true, data: { tempo: 2 } }) });
+    });
+    harness.playerEvents.play({ seconds: 0 });
+    harness.clock.value = 1000;
+    harness.playerEvents.timeupdate({ seconds: 1 });
+    harness.intervals[0].callback();
+    harness.clock.value = 2000;
+    harness.playerEvents.timeupdate({ seconds: 2 });
+    harness.playerEvents.pause();
+    harness.playerEvents.play({ seconds: 2 });
+    first.resolve({ ok: true, json: async () => ({ success: true, data: { tempo: 1 } }) });
+    await tick();
+    await tick();
+    assert.strictEqual(requests.length, 2, 'pause during in-flight periodic save flushes new time after ACK even if playback resumed');
+    await tick();
+    await tick();
+    assert.strictEqual(harness.stored.values.size, 0);
 }
 
 async function testResumeAfterAcknowledgedPause() {
@@ -327,6 +390,8 @@ function testTwoTimesPlaybackAndSeekGap() {
     await testFailedRequestAndNonceRetry();
     await testMemoryQueueWhenStorageDenied();
     await testClosedTabQueuesAcrossLessonsAndVideos();
+    await testPeriodicSaveWithoutPerSecondResendOrBlink();
+    await testPauseDuringPeriodicRequestFlushesAfterAck();
     await testResumeAfterAcknowledgedPause();
     await testChangesDuringRequestAndReloadReplay();
     testSelectsLessonVideoIframeAfterNonVideoIframe();

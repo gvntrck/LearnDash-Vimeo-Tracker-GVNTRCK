@@ -16,6 +16,7 @@
         const progressIndicators = Array.from(document.querySelectorAll('.ldvt-watch-progress'));
         const queues = new Map();
         const sending = new Set();
+        const flushAfterSending = new Set();
         const mergeIntervals = intervals => {
             const normalized = intervals
                 .filter(interval => interval && Number.isFinite(Number(interval.start)) && Number.isFinite(Number(interval.end)))
@@ -121,11 +122,13 @@
         ));
         const setIndicatorState = (state, metaText = '') => {
             getMatchingIndicators().forEach(indicator => {
-                indicator.classList.remove('is-saving', 'is-saved', 'is-error');
-                if (state) indicator.classList.add(`is-${state}`);
+                if (!state || !indicator.classList.contains(`is-${state}`)) {
+                    indicator.classList.remove('is-saving', 'is-saved', 'is-error');
+                    if (state) indicator.classList.add(`is-${state}`);
+                }
                 if (metaText) {
                     const meta = indicator.querySelector('.ldvt-watch-progress__meta');
-                    if (meta) meta.textContent = metaText;
+                    if (meta && meta.textContent !== metaText) meta.textContent = metaText;
                 }
             });
         };
@@ -162,8 +165,13 @@
 
         function flushQueue(key, { keepalive = false } = {}) {
             const entry = queues.get(key);
-            if (!entry || !entry.intervals.length || sending.has(key)) return;
+            if (!entry || !entry.intervals.length) return;
+            if (sending.has(key)) {
+                if (!playbackActive || keepalive) flushAfterSending.add(key);
+                return;
+            }
             const snapshot = mergeIntervals(entry.intervals);
+            const urgent = !playbackActive || keepalive;
             sending.add(key);
             if (isCurrentQueue(entry)) setIndicatorState('saving', 'Progresso pendente; salvando...');
 
@@ -206,8 +214,12 @@
                 console.error('Erro ao salvar tempo do vídeo:', error);
             }).finally(() => {
                 sending.delete(key);
+                const forced = flushAfterSending.delete(key);
                 const current = queues.get(key);
-                if (current && current.intervals.length && !intervalsEqual(current.intervals, snapshot)) flushQueue(key);
+                if (current && current.intervals.length && !intervalsEqual(current.intervals, snapshot)
+                    && (forced || urgent || !isCurrentQueue(current) || !playbackActive || document.visibilityState === 'hidden')) {
+                    flushQueue(key, { keepalive: keepalive || forced });
+                }
             });
         }
 
