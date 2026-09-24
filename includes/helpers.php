@@ -73,17 +73,25 @@ function ldvt_normalize_watched_intervals($intervals, $total_duration = 0)
         return array();
     }
 
+    if (count($intervals) > 10000) {
+        return array();
+    }
+
     foreach ($intervals as $interval) {
         if (is_object($interval)) {
             $interval = (array) $interval;
         }
 
-        if (!is_array($interval) || !isset($interval['start'], $interval['end'])) {
+        if (!is_array($interval) || !isset($interval['start'], $interval['end']) || !is_numeric($interval['start']) || !is_numeric($interval['end'])) {
             continue;
         }
 
-        $start = max(0, (float) $interval['start']);
-        $end = max(0, (float) $interval['end']);
+        $start = (float) $interval['start'];
+        $end = (float) $interval['end'];
+
+        if (!is_finite($start) || !is_finite($end) || $start < 0 || $end < 0 || $start > 604800 || $end > 604800) {
+            continue;
+        }
 
         if ($total_duration > 0) {
             $start = min($start, $total_duration);
@@ -136,14 +144,20 @@ function ldvt_normalize_watched_intervals($intervals, $total_duration = 0)
  */
 function ldvt_parse_watched_intervals_json($json, $total_duration = 0)
 {
-    if (!is_string($json) || $json === '') {
+    if (!is_string($json) || $json === '' || strlen($json) > 1048576) {
         return array();
     }
 
     $decoded = json_decode($json, true);
 
-    if (!is_array($decoded)) {
+    if (!is_array($decoded) || empty($decoded) || count($decoded) > 10000) {
         return array();
+    }
+
+    foreach ($decoded as $interval) {
+        if (!is_array($interval) || !isset($interval['start'], $interval['end']) || !is_numeric($interval['start']) || !is_numeric($interval['end'])) {
+            return array();
+        }
     }
 
     return ldvt_normalize_watched_intervals($decoded, $total_duration);
@@ -191,7 +205,7 @@ function ldvt_get_watched_intervals_from_record($record)
         return array();
     }
 
-    $total_duration = isset($record->duracao_total) ? (int) $record->duracao_total : 0;
+    $total_duration = 0;
 
     if (!empty($record->watched_intervals)) {
         $intervals = ldvt_parse_watched_intervals_json($record->watched_intervals, $total_duration);

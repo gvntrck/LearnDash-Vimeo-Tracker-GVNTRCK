@@ -20,11 +20,56 @@ function ldvt_extract_vimeo_video_id($content)
         return '';
     }
 
-    if (!preg_match('#https?://(?:player\.)?vimeo\.com/(?:video/)?([0-9A-Za-z_-]+)#i', $content, $matches)) {
+    if (!preg_match('#https?://(?:player\.)?vimeo\.com/(?:video/)?([0-9]+)(?:[/?\\#"\\s]|$)#i', $content, $matches)) {
         return '';
     }
 
     return sanitize_text_field($matches[1]);
+}
+
+function ldvt_get_elementor_html_widget_video_ids($elements)
+{
+    $video_ids = array();
+
+    if (!is_array($elements)) {
+        return $video_ids;
+    }
+
+    foreach ($elements as $element) {
+        if (!is_array($element)) {
+            continue;
+        }
+
+        if (isset($element['widgetType']) && $element['widgetType'] === 'html') {
+            $html = $element['settings']['html'] ?? '';
+            if (is_string($html) && preg_match_all('#https?://(?:player\.)?vimeo\.com/(?:video/)?([0-9]+)(?:[/?\\#"\\s]|$)#i', $html, $matches)) {
+                $video_ids = array_merge($video_ids, $matches[1]);
+            }
+        }
+
+        if (isset($element['elements']) && is_array($element['elements'])) {
+            $video_ids = array_merge($video_ids, ldvt_get_elementor_html_widget_video_ids($element['elements']));
+        }
+    }
+
+    return array_values(array_unique(array_map('sanitize_text_field', $video_ids)));
+}
+
+function ldvt_get_post_vimeo_video_ids($post_id)
+{
+    $video_ids = array();
+    $content = get_post_field('post_content', (int) $post_id);
+    if (is_string($content) && preg_match_all('#https?://(?:player\.)?vimeo\.com/(?:video/)?([0-9]+)(?:[/?\\#"\\s]|$)#i', $content, $matches)) {
+        $video_ids = $matches[1];
+    }
+
+    $elementor_data = get_post_meta((int) $post_id, '_elementor_data', true);
+    if (is_string($elementor_data)) {
+        $elementor_data = json_decode($elementor_data, true);
+    }
+    $video_ids = array_merge($video_ids, ldvt_get_elementor_html_widget_video_ids($elementor_data));
+
+    return array_values(array_unique(array_map('sanitize_text_field', $video_ids)));
 }
 
 /**
@@ -36,9 +81,9 @@ function ldvt_extract_vimeo_video_id($content)
  */
 function ldvt_get_post_vimeo_video_id($post_id)
 {
-    $content = get_post_field('post_content', (int) $post_id);
+    $video_ids = ldvt_get_post_vimeo_video_ids($post_id);
 
-    return ldvt_extract_vimeo_video_id($content);
+    return empty($video_ids) ? '' : $video_ids[0];
 }
 
 /**
@@ -165,6 +210,6 @@ function ldvt_tempo_assistido_shortcode($atts)
         . '<span class="ldvt-watch-progress__label">Tempo registrado</span>'
         . '<strong class="ldvt-watch-progress__time">' . esc_html($saved_time_formatted) . '</strong>'
         . '<span class="ldvt-watch-progress__meta">' . esc_html($meta) . '</span>'
-        . '<span class="ldvt-watch-progress__help">O tempo é salvo automaticamente a cada 1,5 minuto de aula assistida. Se tiver algum problema com o registro de tempo ou dúvida, entre em contato pela página <a href="' . esc_url(home_url('/suporte/')) . '">Suporte</a>.</span>'
+        . '<span class="ldvt-watch-progress__help">O progresso é salvo automaticamente a cada 15 segundos de aula assistida. Se tiver algum problema com o registro de tempo ou dúvida, entre em contato pela página <a href="' . esc_url(home_url('/suporte/')) . '">Suporte</a>.</span>'
         . '</div>';
 }

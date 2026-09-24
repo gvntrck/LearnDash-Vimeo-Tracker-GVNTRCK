@@ -4,6 +4,17 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+add_action('init', 'ldvt_ensure_tempo_video_schema', 1);
+
+function ldvt_ensure_tempo_video_schema()
+{
+    if (get_option('ldvt_db_version') === LDVT_VERSION && ldvt_tempo_video_table_exists()) {
+        return;
+    }
+
+    ldvt_criar_tabela_tempo_video();
+}
+
 /**
  * Retorna o nome da tabela de vídeos.
  *
@@ -80,7 +91,7 @@ function ldvt_get_tempo_video_record($user_id, $video_id)
 
     return $wpdb->get_row(
         $wpdb->prepare(
-            "SELECT tempo, curso_id, aula_id, duracao_total, $watched_intervals_select, data_registro
+            "SELECT tempo, tempo_verificado, ultima_confirmacao, curso_id, aula_id, duracao_total, $watched_intervals_select, data_registro
              FROM $table
              WHERE user_id = %d AND video_id = %s
              LIMIT 1",
@@ -99,6 +110,10 @@ function ldvt_criar_tabela_tempo_video()
 {
     global $wpdb;
 
+    if (get_option('ldvt_db_version') === LDVT_VERSION && ldvt_tempo_video_table_exists()) {
+        return;
+    }
+
     $table = ldvt_get_tempo_video_table_name();
     $charset_collate = $wpdb->get_charset_collate();
     $sql = "CREATE TABLE $table (
@@ -106,6 +121,8 @@ function ldvt_criar_tabela_tempo_video()
         user_id       BIGINT UNSIGNED NOT NULL,
         video_id      VARCHAR(50)      NOT NULL,
         tempo         INT              NOT NULL,
+        tempo_verificado INT NOT NULL DEFAULT 0,
+        ultima_confirmacao DATETIME NULL,
         curso_id      BIGINT DEFAULT 0,
         aula_id       BIGINT DEFAULT 0,
         duracao_total INT DEFAULT 0,
@@ -116,4 +133,12 @@ function ldvt_criar_tabela_tempo_video()
 
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
     dbDelta($sql);
+
+    if (ldvt_tempo_video_table_exists()) {
+        $verified_column = $wpdb->get_var($wpdb->prepare("SHOW COLUMNS FROM $table LIKE %s", 'tempo_verificado'));
+        $confirmation_column = $wpdb->get_var($wpdb->prepare("SHOW COLUMNS FROM $table LIKE %s", 'ultima_confirmacao'));
+        if ($verified_column && $confirmation_column) {
+            update_option('ldvt_db_version', LDVT_VERSION);
+        }
+    }
 }
