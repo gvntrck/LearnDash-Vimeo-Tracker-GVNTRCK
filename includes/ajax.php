@@ -109,7 +109,7 @@ function ldvt_get_vimeo_duration($video_id)
     }
 
     $url = 'https://vimeo.com/api/oembed.json?url=' . rawurlencode('https://vimeo.com/' . $video_id);
-    $response = wp_remote_get($url, array('timeout' => 3, 'redirection' => 0));
+    $response = wp_remote_get($url, array('timeout' => 3, 'redirection' => 0, 'headers' => array('Referer' => home_url('/'))));
     if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
         return 0;
     }

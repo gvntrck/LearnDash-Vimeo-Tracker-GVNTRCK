@@ -8,7 +8,7 @@ if (!is_dir($test_upgrade_dir)) {
 file_put_contents($test_upgrade_dir . '/upgrade.php', "<?php\n");
 define('ABSPATH', $test_wp_root);
 define('DAY_IN_SECONDS', 86400);
-define('LDVT_VERSION', '1.9.12');
+define('LDVT_VERSION', '1.9.13');
 define('LDVT_PLUGIN_URL', 'https://example.test/plugins/ldvt/');
 define('LDVT_SETTINGS_OPTION', 'ldvt_settings');
 
@@ -167,6 +167,7 @@ function get_queried_object_id() { return $GLOBALS['test_queried_object_id']; }
 function get_the_ID() { return 125; }
 function is_singular() { return $GLOBALS['test_is_singular']; }
 function admin_url($path) { return 'https://example.test/' . $path; }
+function home_url($path = '') { return 'https://example.test/' . ltrim($path, '/'); }
 function wp_create_nonce($action) { return 'valid'; }
 function wp_enqueue_script(...$args) { $GLOBALS['test_enqueued_scripts'][] = $args; }
 function wp_localize_script($handle, $object_name, $data) { $GLOBALS['test_localized_scripts'][$object_name] = $data; }
@@ -313,6 +314,7 @@ $GLOBALS['test_oembed'] = array('code' => 200, 'body' => json_encode(array('dura
 expect_true(ldvt_get_vimeo_duration('1189714753') === 0, 'oEmbed ID mismatch rejected');
 expect_true(strpos($GLOBALS['last_remote_request'][0], 'https://vimeo.com/api/oembed.json?') === 0, 'oEmbed endpoint host is fixed');
 expect_true($GLOBALS['last_remote_request'][1]['timeout'] === 3, 'oEmbed timeout is bounded');
+expect_true($GLOBALS['last_remote_request'][1]['headers']['Referer'] === home_url('/'), 'oEmbed identifies the authorized WordPress domain');
 
 reset_test_state();
 $GLOBALS['test_oembed'] = new TestWpError();
