@@ -8,7 +8,7 @@ if (!is_dir($test_upgrade_dir)) {
 file_put_contents($test_upgrade_dir . '/upgrade.php', "<?php\n");
 define('ABSPATH', $test_wp_root);
 define('DAY_IN_SECONDS', 86400);
-define('LDVT_VERSION', '1.9.13');
+define('LDVT_VERSION', '1.9.14');
 define('LDVT_PLUGIN_URL', 'https://example.test/plugins/ldvt/');
 define('LDVT_SETTINGS_OPTION', 'ldvt_settings');
 
@@ -143,6 +143,11 @@ $GLOBALS['test_remote_calls'] = 0;
 
 function add_action(...$args) {}
 function add_shortcode(...$args) {}
+function shortcode_atts($defaults, $atts, $shortcode) { return array_merge($defaults, (array) $atts); }
+function esc_html($value) { return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8'); }
+function esc_attr($value) { return esc_html($value); }
+function esc_url($value) { return esc_html($value); }
+function number_format_i18n($value, $decimals = 0) { return number_format($value, $decimals, ',', '.'); }
 function get_option($name, $default = false)
 {
     if ($name === 'ldvt_settings') {
@@ -307,6 +312,20 @@ $script_count = count($GLOBALS['test_enqueued_scripts']);
 $GLOBALS['test_queried_object_id'] = 125;
 ldvt_vimeo_tracking_script();
 expect_true(count($GLOBALS['test_enqueued_scripts']) === $script_count, 'non-LearnDash singular object does not enqueue lesson tracking');
+
+$GLOBALS['wpdb']->rows['7:1189714750'] = (object) array(
+    'tempo' => 2400,
+    'duracao_total' => 3600,
+    'data_registro' => '2026-09-29 12:00:00',
+);
+$shortcode = ldvt_tempo_assistido_shortcode(array('video_id' => '1189714750'));
+expect_true(strpos($shortcode, '66,7% assistido') !== false, 'shortcode shows informational watched percentage');
+$GLOBALS['wpdb']->rows['7:1189714750']->tempo = 3600;
+$shortcode = ldvt_tempo_assistido_shortcode(array('video_id' => '1189714750'));
+expect_true(strpos($shortcode, '100% assistido') !== false, 'full video shows a whole percentage');
+$GLOBALS['wpdb']->rows['7:1189714750']->duracao_total = 0;
+$shortcode = ldvt_tempo_assistido_shortcode(array('video_id' => '1189714750'));
+expect_true(strpos($shortcode, 'assistido</span>') === false, 'shortcode hides percentage without known duration');
 
 $GLOBALS['test_oembed'] = array('code' => 200, 'body' => '{malformed');
 expect_true(ldvt_get_vimeo_duration('1189714752') === 0, 'malformed oEmbed rejected');

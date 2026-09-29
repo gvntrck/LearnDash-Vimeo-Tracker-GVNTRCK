@@ -134,8 +134,18 @@
             if (!isCurrentQueue(entry)) return;
             getMatchingIndicators().forEach(indicator => {
                 const time = indicator.querySelector('.ldvt-watch-progress__time');
+                const percentage = indicator.querySelector('.ldvt-watch-progress__percentage');
                 const meta = indicator.querySelector('.ldvt-watch-progress__meta');
                 if (time && data.tempo_formatado) time.textContent = data.tempo_formatado;
+                if (percentage && typeof data.tempo !== 'undefined' && typeof data.duracao_total !== 'undefined') {
+                    const duration = Number(data.duracao_total);
+                    const watched = Number(data.tempo);
+                    percentage.hidden = !(duration > 0 && Number.isFinite(watched));
+                    if (!percentage.hidden) {
+                        const progress = Math.min(100, Math.round(Math.max(0, watched) / duration * 1000) / 10);
+                        percentage.textContent = `${new Intl.NumberFormat(document.documentElement.lang || 'pt-BR', { maximumFractionDigits: 1 }).format(progress)}% assistido`;
+                    }
+                }
                 if (meta && !keepStatus && playerReady) {
                     if (data.completion_pending) meta.textContent = 'Progresso salvo; conclusão pendente';
                     else if (data.data_registro_formatada) meta.textContent = `Salvo em ${data.data_registro_formatada}`;

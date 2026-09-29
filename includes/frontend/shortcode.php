@@ -191,6 +191,7 @@ function ldvt_tempo_assistido_shortcode($atts)
 
     $saved_time = 0;
     $saved_time_formatted = ldvt_format_seconds(0);
+    $percentage = '';
     $meta = is_user_logged_in() ? 'Ainda não salvo' : 'Faça login para registrar seu progresso';
 
     if (is_user_logged_in() && $video_id) {
@@ -199,6 +200,11 @@ function ldvt_tempo_assistido_shortcode($atts)
         if ($record) {
             $saved_time = (int) $record->tempo;
             $saved_time_formatted = ldvt_format_seconds($saved_time);
+            $duration = (int) $record->duracao_total;
+            if ($duration > 0) {
+                $progress = min(100, ldvt_calculate_progress($saved_time, $duration));
+                $percentage = number_format_i18n($progress, floor($progress) === (float) $progress ? 0 : 1) . '% assistido';
+            }
             $meta = 'Salvo em ' . date_i18n('d/m/Y H:i', strtotime($record->data_registro));
         }
     } elseif (is_user_logged_in()) {
@@ -209,6 +215,7 @@ function ldvt_tempo_assistido_shortcode($atts)
         . '<div class="ldvt-watch-progress" data-video-id="' . esc_attr($video_id) . '" data-saved-time="' . esc_attr($saved_time) . '" aria-live="polite">'
         . '<span class="ldvt-watch-progress__label">Tempo registrado</span>'
         . '<strong class="ldvt-watch-progress__time">' . esc_html($saved_time_formatted) . '</strong>'
+        . '<span class="ldvt-watch-progress__percentage"' . ($percentage === '' ? ' hidden' : '') . '>' . esc_html($percentage) . '</span>'
         . '<span class="ldvt-watch-progress__meta">' . esc_html($meta) . '</span>'
         . '<span class="ldvt-watch-progress__help">O progresso é salvo automaticamente a cada 15 segundos de aula assistida. Se tiver algum problema com o registro de tempo ou dúvida, entre em contato pela página <a href="' . esc_url(home_url('/suporte/')) . '">Suporte</a>.</span>'
         . '</div>';

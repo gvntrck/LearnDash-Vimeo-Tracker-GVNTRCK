@@ -55,6 +55,7 @@ function createHarness(saveHandler, {
     playerReady = () => Promise.resolve(),
     vimeoAvailable = true,
     queued = null,
+    getData = { has_record: false },
 } = {}) {
     const stored = createStorage(sharedStorage, storageDenied);
     const playerEvents = {};
@@ -66,6 +67,7 @@ function createHarness(saveHandler, {
     const classChanges = { savingAdds: 0 };
     const meta = { textContent: '' };
     const time = { textContent: '' };
+    const percentage = { textContent: '', hidden: true };
     const indicator = {
         dataset: {},
         classList: {
@@ -76,7 +78,8 @@ function createHarness(saveHandler, {
             remove: (...names) => names.forEach(name => classes.delete(name)),
             contains: name => classes.has(name),
         },
-        querySelector: selector => selector === '.ldvt-watch-progress__meta' ? meta : time,
+        querySelector: selector => selector === '.ldvt-watch-progress__meta' ? meta
+            : selector === '.ldvt-watch-progress__percentage' ? percentage : time,
     };
     const iframe = videoId ? { src: `https://player.vimeo.com/video/${videoId}?h=test` } : null;
     const iframeCandidates = iframeSources || (iframe ? [iframe] : []);
@@ -145,7 +148,7 @@ function createHarness(saveHandler, {
             const body = new URLSearchParams(options.body);
             if (body.get('action') === 'ldvt_get_tempo_video') {
                 getRequests.push({ url, options, body });
-                return Promise.resolve({ ok: true, json: async () => ({ success: true, data: { has_record: false } }) });
+                return Promise.resolve({ ok: true, json: async () => ({ success: true, data: getData }) });
             }
             return saveHandler({ url, options, body });
         },
@@ -158,7 +161,7 @@ function createHarness(saveHandler, {
     if (!vimeoAvailable) context.window.Vimeo = null;
     vm.runInNewContext(source, context);
     if (autoDOMContentLoaded && documentEvents.DOMContentLoaded) documentEvents.DOMContentLoaded();
-    return { stored, classes, classChanges, meta, config, intervals, playerEvents, windowEvents, documentEvents, getRequests, playerFrames, iframeCandidates, observers, clock, currentKey, window: context.window, vimeoSdk: context.Vimeo };
+    return { stored, classes, classChanges, meta, time, percentage, config, intervals, playerEvents, windowEvents, documentEvents, getRequests, playerFrames, iframeCandidates, observers, clock, currentKey, window: context.window, vimeoSdk: context.Vimeo };
 }
 
 async function testFailedRequestAndNonceRetry() {
@@ -497,6 +500,30 @@ function testSelectsLessonVideoIframeAfterNonVideoIframe() {
     assert.strictEqual(JSON.parse(harness.stored.values.get(harness.currentKey)).videoId, '1189714750', 'selected lesson video ID is tracked');
 }
 
+async function testInformationalPercentage() {
+    const harness = createHarness(() => Promise.resolve({
+        ok: true,
+        json: async () => ({ success: true, data: { tempo: 2700, tempo_formatado: '00:45:00', duracao_total: 3600 } }),
+    }), { getData: { tempo: 2400, tempo_formatado: '00:40:00', duracao_total: 3600 } });
+    await tick();
+    assert.strictEqual(harness.percentage.textContent, '66,7% assistido');
+    assert.strictEqual(harness.percentage.hidden, false);
+    harness.playerEvents.play({ seconds: 2400 });
+    harness.clock.value = 300000;
+    harness.playerEvents.timeupdate({ seconds: 2700 });
+    harness.playerEvents.pause();
+    await tick();
+    await tick();
+    assert.strictEqual(harness.percentage.textContent, '75% assistido');
+    assert.strictEqual(harness.time.textContent, '00:45:00');
+
+    const withoutDuration = createHarness(() => Promise.resolve({ ok: true, json: async () => ({ success: true, data: {} }) }), {
+        getData: { tempo: 2400, duracao_total: 0 },
+    });
+    await tick();
+    assert.strictEqual(withoutDuration.percentage.hidden, true, 'unknown duration does not display misleading percentage');
+}
+
 function testGetRevalidationWithoutIndicator() {
     const harness = createHarness(() => Promise.resolve({ ok: true, json: async () => ({ success: true, data: {} }) }), { showIndicator: false });
     assert.strictEqual(harness.getRequests.length, 1, 'lesson visit runs GET revalidation even without progress widget');
@@ -566,6 +593,7 @@ function testTwoTimesPlaybackAndSeekGap() {
     await testReplacedIframeKeepsProgress();
     await testPlayerReadyFailureIsVisible();
     await testVimeoSdkDelayedAfterPageLoad();
+    await testInformationalPercentage();
     testStartsWhenDocumentAlreadyLoaded();
     testSelectsLessonVideoIframeAfterNonVideoIframe();
     testGetRevalidationWithoutIndicator();
